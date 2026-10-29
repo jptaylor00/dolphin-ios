@@ -115,7 +115,7 @@ class TCSidewaysWiiPad: TCWiiPad {
       pad.sharedInit()
       layer.addSubview(pad)
       // Reuse the large right-side button and add a distinct latch target.
-      button("2",x:w-151*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(gasDown(_:)))
+      button("1",x:w-151*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(gasDown(_:)))
       let gas = layer.subviews.last as! TCButton
       gas.removeTarget(self, action:#selector(releaseMomentary(_:)), for:[.touchUpInside,.touchUpOutside,.touchCancel])
       gas.addTarget(self,action:#selector(gasUp(_:)),for:[.touchUpInside,.touchUpOutside,.touchCancel])
@@ -168,28 +168,28 @@ class TCSidewaysWiiPad: TCWiiPad {
     }
     if b != nil { activateSMB(b?.tag) }
   }
-  @objc private func toggleGasLock(_ b:UIButton) {\n    gasLocked = !gasLocked\n    TCManagerInterface.setButtonStateFor(106,controller:port,state:gasLocked)\n    b.setTitle(gasLocked ? "🔒" : "→ 🔒",for:.normal)\n  }\n  @objc private func gasDown(_ b:UIButton) {
+  @objc private func toggleGasLock(_ b:UIButton) {\n    gasLocked = !gasLocked\n    TCManagerInterface.setButtonStateFor(105,controller:port,state:gasLocked)\n    b.setTitle(gasLocked ? "🔒" : "→ 🔒",for:.normal)\n  }\n  @objc private func gasDown(_ b:UIButton) {
     if gasLocked {
       gasLocked = false
       gasHeld = false
-      TCManagerInterface.setButtonStateFor(106,controller:port,state:false)
+      TCManagerInterface.setButtonStateFor(105,controller:port,state:false)
     } else {
       gasHeld = true
-      TCManagerInterface.setButtonStateFor(106,controller:port,state:true)
+      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)
     }
   }
   @objc private func gasUp(_ b:UIButton) {
     if !gasLocked {
       gasHeld = false
-      TCManagerInterface.setButtonStateFor(106,controller:port,state:false)
+      TCManagerInterface.setButtonStateFor(105,controller:port,state:false)
     }
   }
   @objc private func gasPan(_ g:UIPanGestureRecognizer) {
-    // Touch-down already activates gas; avoid toggling it twice.\n    if g.state == .began && !gasLocked {\n      TCManagerInterface.setButtonStateFor(106,controller:port,state:true)\n    }
+    // Touch-down already activates gas; avoid toggling it twice.\n    if g.state == .began && !gasLocked {\n      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)\n    }
     if g.state == .changed && g.translation(in:g.view).x > 35 {
       gasLocked = true
       gasHeld = true
-      TCManagerInterface.setButtonStateFor(106,controller:port,state:true)
+      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)
       overlay?.subviews.compactMap{$0 as? UIButton}.first(where: {$0.currentTitle == "→ 🔒"})?.setTitle("🔒",for:.normal)
     }
     if g.state == .ended || g.state == .cancelled {
