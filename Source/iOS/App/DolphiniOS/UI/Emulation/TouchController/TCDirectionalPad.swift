@@ -14,6 +14,8 @@ class TCDirectionalPad: UIView
   
   @IBInspectable var directionalPadType: Int = 6 // default: GC D-Pad
   
+  @IBInspectable var sidewaysJoystick: Bool = false
+  private var joystickThumb: UIImageView?
   var port: Int = 0
   var isPressed: Bool = false
   
@@ -35,6 +37,22 @@ class TCDirectionalPad: UIView
   
   func sharedInit()
   {
+    if sidewaysJoystick {
+      let bg = UIImageView(frame: bounds)
+      bg.image = getImage(imageName: "gcwii_joystick_range")
+      bg.contentMode = .scaleAspectFit
+      addSubview(bg)
+      let knob = UIImageView(frame: CGRect(x: 0, y: 0,
+                        width: bounds.width * 0.48, height: bounds.height * 0.48))
+      knob.image = getImage(imageName: "gcwii_joystick")
+      knob.contentMode = .scaleAspectFit
+      knob.center = CGPoint(x: bounds.midX, y: bounds.midY)
+      addSubview(knob)
+      joystickThumb = knob
+      addGestureRecognizer(UIPanGestureRecognizer(target: self,
+                           action: #selector(handleSidewaysJoystick)))
+      return
+    }
     // Load image
     dpadNoPressed = getImage(imageName: "gcwii_dpad")
     dpadOnePressed = getImage(imageName: "gcwii_dpad_pressed_one_direction")
@@ -63,6 +81,23 @@ class TCDirectionalPad: UIView
     return UIImage(named: imageName, in: Bundle(for: type(of: self)), compatibleWith: nil)!
   }
   
+  @objc func handleSidewaysJoystick(_ gesture: UIPanGestureRecognizer) {
+    let done = gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed
+    let center = CGPoint(x: bounds.midX, y: bounds.midY)
+    let point = done ? center : gesture.location(in: self)
+    let dx = point.x - center.x
+    let dy = point.y - center.y
+    let radius = max(1, min(bounds.width, bounds.height) * 0.35)
+    let length = sqrt(dx * dx + dy * dy)
+    let scale = length > radius ? radius / length : 1
+    joystickThumb?.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
+    let deadzone = radius * 0.23
+    let pressed = [dy < -deadzone, dy > deadzone, dx < -deadzone, dx > deadzone]
+    for (i, value) in pressed.enumerated() {
+      TCManagerInterface.setButtonStateFor(directionalPadType + i, controller: port, state: value)
+    }
+  }
+
   @objc func handleLongPress(gesture: UILongPressGestureRecognizer)
   {
     let imageView = gesture.view as! UIImageView
