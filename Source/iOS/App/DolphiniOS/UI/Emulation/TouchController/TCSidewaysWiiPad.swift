@@ -81,6 +81,7 @@ class TCSidewaysWiiPad: TCWiiPad {
         if let b = v as? UIButton { b.tag = i == 0 ? 105 : 106 }
       }
       let swipe = UIPanGestureRecognizer(target:self,action:#selector(swipeSMB(_:)))
+      swipe.cancelsTouchesInView = false
       layer.addGestureRecognizer(swipe)
       button("−",x:w-112*unit,y:h-142*unit,width:22*unit,height:22*unit,action:#selector(pressMomentary(_:)))
       layer.subviews.last?.tag = 102
@@ -94,7 +95,7 @@ class TCSidewaysWiiPad: TCWiiPad {
         button(label,x:left+CGFloat(i)*23*unit,y:h-99*unit,width:19*unit,height:20*unit,action:#selector(pressMomentary(_:)))
         layer.subviews.last?.tag = [103,102,100][i]
       }
-      button("B",x:left,y:h-75*unit,width:59*unit,height:59*unit,action:#selector(pressMomentary(_:)))
+      button("B",x:left,y:h-79*unit,width:77*unit,height:77*unit,action:#selector(pressMomentary(_:)))
       layer.subviews.last?.tag = 101
       // Small item D-pad, adjacent to the accelerate / lock area.
       let pad = TCDirectionalPad(frame:CGRect(x:w-66*unit,y:h-133*unit,width:55*unit,height:55*unit))
