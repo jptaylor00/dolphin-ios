@@ -88,7 +88,7 @@ class TCDirectionalPad: UIView
     let dx = point.x - center.x
     let dy = point.y - center.y
     let radius = max(1, min(bounds.width, bounds.height) * 0.35)
-    let length = hypot(dx, dy)
+    let length = sqrt(dx * dx + dy * dy)
     let scale = length > radius ? radius / length : 1
     joystickThumb?.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
     let deadzone = radius * 0.23
