@@ -24,6 +24,7 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' \
             DOL_PBID_ORGANIZATION_IDENTIFIER='io.github.jptaylor00.customdolphin' \
             DOL_BUILD_SOURCE='development' \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIconBeta \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
       - name: Package unsigned IPA
         run: |
