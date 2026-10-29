@@ -92,8 +92,8 @@ class TCSidewaysWiiPad: TCWiiPad {
       joy.port = port
       joy.sharedInit()
       layer.addSubview(joy)
-      button("1",x:w-146*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
-      button("2",x:w-63*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
+      button("1",x:w-170*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
+      button("2",x:w-87*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
       let swipe = UIPanGestureRecognizer(target:self,action:#selector(swipeSMB(_:)))
       swipe.cancelsTouchesInView = false
       layer.addGestureRecognizer(swipe)
@@ -190,7 +190,7 @@ class TCSidewaysWiiPad: TCWiiPad {
       gasLocked = true
       gasHeld = true
       TCManagerInterface.setButtonStateFor(106,controller:port,state:true)
-      overlay?.subviews.compactMap{$0 as? UIButton}.last?.setTitle("🔒",for:.normal)
+      overlay?.subviews.compactMap{$0 as? UIButton}.first(where: {$0.currentTitle == "→ 🔒"})?.setTitle("🔒",for:.normal)
     }
     if g.state == .ended || g.state == .cancelled {
       if !gasLocked { gasUp(g.view as! UIButton) }
