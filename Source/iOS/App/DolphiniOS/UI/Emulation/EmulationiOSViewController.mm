@@ -44,6 +44,7 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 @implementation EmulationiOSViewController {
   DOLEmulationVisibleTouchPad _visibleTouchPad;
   int _stateSlot;
+  NSInteger _sidewaysPreset;
 }
 
 - (void)viewDidLoad {
@@ -122,6 +123,28 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     }
 
     [visibleControllerActions addObject:wiimoteAction];
+  }
+
+  if (wiimoteTouchPadAttached) {
+    NSArray<NSString*>* names = @[@"Sideways Wii Remote", @"Super Mario Bros Configuration", @"Mario Kart Configuration"];
+    NSMutableArray<UIMenuElement*>* layouts = [NSMutableArray array];
+    for (NSInteger index = 0; index < names.count; ++index) {
+      NSInteger selected = index;
+      UIAction* action = [UIAction actionWithTitle:names[index] image:nil identifier:nil handler:^(UIAction*) {
+        self->_sidewaysPreset = selected;
+        for (TCView* pad in self.touchPads) {
+          if ([pad isKindOfClass:[TCSidewaysWiiPad class]]) {
+            [(TCSidewaysWiiPad*)pad setPreset:(int)selected];
+          }
+        }
+        [self updateVisibleTouchPadWithType:DOLEmulationVisibleTouchPadSidewaysWiimote];
+        [self recreateMenu];
+        [self.navigationController setNavigationBarHidden:true animated:true];
+      }];
+      action.state = (_sidewaysPreset == index) ? UIMenuElementStateOn : UIMenuElementStateOff;
+      [layouts addObject:action];
+    }
+    [controllerActions addObject:[UIMenu menuWithTitle:@"Sideways Controller Layout" image:nil identifier:nil options:0 children:layouts]];
   }
 
   if (gamecubeTouchPadAttached) {
