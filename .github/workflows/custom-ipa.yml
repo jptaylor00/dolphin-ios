@@ -26,14 +26,22 @@ jobs:
             DOL_BUILD_SOURCE='development' \
             ASSETCATALOG_COMPILER_APPICON_NAME=AppIconBeta \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-      - name: Package unsigned IPA
+      - name: Package unsigned IPA without signing
         run: |
-          mkdir -p products
-          Source/iOS/App/Project/Scripts/CreateIpa.sh \
-            "$RUNNER_TEMP/DolphiniOS.xcarchive/Products/Applications/DolphiniOS.app" \
-            "Custom DolphiniOS" \
-            Source/iOS/App/Project/Entitlements/Public.entitlements \
-            products/Custom-DolphiniOS-Unsigned.ipa
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          import os
+          app = Path(os.environ['RUNNER_TEMP']) / "DolphiniOS.xcarchive/Products/Applications/DolphiniOS.app"
+          assert app.is_dir(), f"Built application missing: {app}"
+          output = Path("products/Custom-DolphiniOS-Unsigned.ipa")
+          output.parent.mkdir(exist_ok=True)
+          with ZipFile(output, "w", ZIP_DEFLATED, compresslevel=4) as ipa:
+              for file in app.rglob("*"):
+                  if file.is_file():
+                      ipa.write(file, Path("Payload") / app.name / file.relative_to(app))
+          print(f"Created {output}: {output.stat().st_size} bytes")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: Custom-DolphiniOS-Unsigned
