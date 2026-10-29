@@ -53,6 +53,9 @@ class TCButton: UIButton
     
     let buttonPressedImage = getImage(named: buttonType.getImageName() + "_pressed", scale: buttonType.getButtonScale())
     self.setImage(buttonPressedImage, for: .selected)
+    if controllerButton == 105 || controllerButton == 106 {
+      transform = CGAffineTransform(scaleX: 2, y: 2)
+    }
   }
   
   func getImage(named: String, scale: CGFloat) -> UIImage
@@ -104,8 +107,50 @@ class TCButton: UIButton
     }
   }
   
+
+  private var activeSlideButton: TCButton?
+  private var isSlideButton: Bool { controllerButton == 105 || controllerButton == 106 }
+  private func slideTarget(_ touch: UITouch) -> TCButton? {
+    guard let parent = superview else { return nil }
+    let location = touch.location(in: parent)
+    return parent.subviews.compactMap { $0 as? TCButton }.first {
+      ($0.controllerButton == 105 || $0.controllerButton == 106) &&
+      $0.port == port && !$0.isHidden && $0.isEnabled && $0.frame.contains(location)
+    }
+  }
+  private func activate(_ next: TCButton?) {
+    if activeSlideButton === next { return }
+    if let previous = activeSlideButton {
+      TCManagerInterface.setButtonStateFor(previous.controllerButton, controller: previous.port, state: false)
+      previous.isSelected = false
+    }
+    activeSlideButton = next
+    if let next = next {
+      TCManagerInterface.setButtonStateFor(next.controllerButton, controller: next.port, state: true)
+      next.isSelected = true
+      next.hapticGenerator.impactOccurred()
+    }
+  }
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if isSlideButton, let touch = touches.first { activate(slideTarget(touch)) }
+    else { super.touchesBegan(touches, with: event) }
+  }
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if isSlideButton { activate(nil) }
+    else { super.touchesEnded(touches, with: event) }
+  }
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if isSlideButton { activate(nil) }
+    else { super.touchesCancelled(touches, with: event) }
+  }
+
   @objc override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?)
   {
+    if isSlideButton, let touch = touches.first {
+      activate(slideTarget(touch))
+      return
+    }
+
     if (!isAxis || !useHapicTouch)
     {
       return

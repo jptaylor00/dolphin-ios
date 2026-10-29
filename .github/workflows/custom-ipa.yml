@@ -1,0 +1,39 @@
+name: Build customized DolphiniOS
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build utilities
+        run: |
+          brew install cmake ninja bartycrouch
+          python3 -m pip install --break-system-packages polib || true
+      - name: Build unsigned app
+        run: |
+          xcodebuild archive \
+            -project Source/iOS/App/DolphiniOS.xcodeproj \
+            -scheme 'DiOS (NJB)' \
+            -configuration 'Release (Non-Jailbroken)' \
+            -archivePath "$RUNNER_TEMP/DolphiniOS.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            DOL_PBID_ORGANIZATION_IDENTIFIER='io.github.jptaylor00.customdolphin' \
+            DOL_BUILD_SOURCE='development' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p products
+          Source/iOS/App/Project/Scripts/CreateIpa.sh \
+            "$RUNNER_TEMP/DolphiniOS.xcarchive/Products/Applications/DolphiniOS.app" \
+            "Custom DolphiniOS" \
+            Source/iOS/App/Project/Entitlements/Public.entitlements \
+            products/Custom-DolphiniOS-Unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Custom-DolphiniOS-Unsigned
+          path: products/Custom-DolphiniOS-Unsigned.ipa
