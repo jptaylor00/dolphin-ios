@@ -16,6 +16,13 @@ class TCButton: UIButton
     }
   }
   
+  // Only the SIDEWAYS Wii Remote's 1/2 buttons use cross-button dragging.
+  // Upright Wii Remote (including Nunchuk mode) must retain UIKit's native
+  // touchDown/touchUpInside events rather than intercepting touchesBegan.
+  @IBInspectable var sidewaysSlideEnabled: Bool = false {
+    didSet { updateImage() }
+  }
+
   @IBInspectable var isAxis: Bool = false
   
   var port: Int = 0
@@ -53,9 +60,10 @@ class TCButton: UIButton
     
     let buttonPressedImage = getImage(named: buttonType.getImageName() + "_pressed", scale: buttonType.getButtonScale())
     self.setImage(buttonPressedImage, for: .selected)
-    if controllerButton == 105 || controllerButton == 106 {
-      transform = CGAffineTransform(scaleX: 2, y: 2)
-    }
+    // Scale only the sideways SMB buttons. In the upright Nunchuk layout
+    // global 2x transforms overlap neighboring buttons and steal touches.
+    transform = sidewaysSlideEnabled && (controllerButton == 105 || controllerButton == 106)
+      ? CGAffineTransform(scaleX: 2, y: 2) : .identity
   }
   
   func getImage(named: String, scale: CGFloat) -> UIImage
@@ -109,7 +117,9 @@ class TCButton: UIButton
   
 
   private var activeSlideButton: TCButton?
-  private var isSlideButton: Bool { controllerButton == 105 || controllerButton == 106 }
+  private var isSlideButton: Bool {
+    sidewaysSlideEnabled && (controllerButton == 105 || controllerButton == 106)
+  }
   private func slideTarget(_ touch: UITouch) -> TCButton? {
     guard let parent = superview else { return nil }
     let location = touch.location(in: parent)

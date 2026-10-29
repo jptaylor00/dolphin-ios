@@ -92,7 +92,11 @@ class TCDirectionalPad: UIView
     let scale = length > radius ? radius / length : 1
     joystickThumb?.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
     let deadzone = radius * 0.23
-    let pressed = [dy < -deadzone, dy > deadzone, dx < -deadzone, dx > deadzone]
+    // Dolphin remaps sideways Wii Remote input names to rotated physical D-pad
+    // bits: Up -> Right, Down -> Left, Left -> Up, Right -> Down.
+    // Apply the inverse rotation so the onscreen joystick remains intuitive:
+    // screen Up = Wii Left, Down = Wii Right, Left = Wii Down, Right = Wii Up.
+    let pressed = [dx > deadzone, dx < -deadzone, dy < -deadzone, dy > deadzone]
     for (i, value) in pressed.enumerated() {
       TCManagerInterface.setButtonStateFor(directionalPadType + i, controller: port, state: value)
     }

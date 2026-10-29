@@ -21,6 +21,7 @@
                         <userDefinedRuntimeAttribute type="number" keyPath="controllerButton">
                             <integer key="value" value="106"/>
                         </userDefinedRuntimeAttribute>
+                        <userDefinedRuntimeAttribute type="boolean" keyPath="sidewaysSlideEnabled" value="YES"/>
                     </userDefinedRuntimeAttributes>
                 </button>
                 <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="ss3-pv-aGg" userLabel="B" customClass="TCButton" customModule="DolphiniOS" customModuleProvider="target">
@@ -48,6 +49,7 @@
                         <userDefinedRuntimeAttribute type="number" keyPath="controllerButton">
                             <integer key="value" value="105"/>
                         </userDefinedRuntimeAttribute>
+                        <userDefinedRuntimeAttribute type="boolean" keyPath="sidewaysSlideEnabled" value="YES"/>
                     </userDefinedRuntimeAttributes>
                 </button>
                 <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="MHM-u3-cl2" userLabel="Plus" customClass="TCButton" customModule="DolphiniOS" customModuleProvider="target">
