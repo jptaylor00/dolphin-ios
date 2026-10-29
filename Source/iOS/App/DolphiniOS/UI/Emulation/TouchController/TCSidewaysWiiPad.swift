@@ -53,65 +53,83 @@ class TCSidewaysWiiPad: TCWiiPad {
     let w = layer.bounds.width
     let h = layer.bounds.height
     let unit = min(w / 360, h / 190)
+    // Reuse DolphiniOS's real Wii button images and their stock proportions.
     func button(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, action: Selector) {
-      let b = UIButton(type: .custom)
-      b.frame = CGRect(x:x, y:y, width:width, height:height)
-      b.setTitle(text, for: .normal)
-      b.setTitleColor(.white, for: .normal)
-      b.titleLabel?.font = .boldSystemFont(ofSize: min(30, height * 0.45))
-      b.backgroundColor = UIColor(white: 0.23, alpha: 0.65)
-      b.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
-      b.layer.borderWidth = 1
-      b.layer.cornerRadius = min(14, height * 0.2)
+      let key: Int
+      switch text {
+      case "1": key = 105
+      case "2": key = 106
+      case "B": key = 101
+      case "A": key = 100
+      case "+": key = 103
+      case "−": key = 102
+      default: key = 104
+      }
+      let b = TCButton(frame: CGRect(x:x, y:y, width:width, height:height))
+      b.controllerButton = key
+      b.port = port
+      b.tag = key
+      // TCButton installs its own touch actions, so replace them rather than
+      // causing duplicate presses and releases.
+      b.removeTarget(nil, action:nil, for:.allEvents)
       b.addTarget(self, action: action, for: .touchDown)
-      b.addTarget(self, action: #selector(releaseMomentary(_:)), for: [.touchUpInside,.touchUpOutside,.touchCancel])
+      b.addTarget(self, action: #selector(releaseMomentary(_:)),
+                  for: [.touchUpInside,.touchUpOutside,.touchCancel])
+      if key == 105 || key == 106 {
+        let type = TCButtonType(rawValue:key)!
+        b.setImage(b.getImage(named:type.getImageName(), scale:type.getButtonScale() * 2), for:.normal)
+        b.setImage(b.getImage(named:type.getImageName()+"_pressed", scale:type.getButtonScale() * 2), for:.selected)
+      }
       layer.addSubview(b)
     }
     // Controls are positioned relative to the landscape screen.
     if preset == 1 {
-      let joy = TCDirectionalPad(frame:CGRect(x:24*unit,y:h-150*unit,width:104*unit,height:104*unit))
+      // Recreate the ORIGINAL custom sideways arrangement, not a redesigned UI.
+      // 128pt joystick at lower left; original Wii 1/2 artwork doubled at right.
+      let joy = TCDirectionalPad(frame:CGRect(x:0,y:h-128*unit,width:128*unit,height:128*unit))
       joy.directionalPadType = 107
       joy.sidewaysJoystick = true
       joy.port = port
       joy.sharedInit()
       layer.addSubview(joy)
-      button("1",x:w-148*unit,y:h-100*unit,width:65*unit,height:65*unit,action:#selector(pressSMB(_:)))
-      button("2",x:w-76*unit,y:h-100*unit,width:65*unit,height:65*unit,action:#selector(pressSMB(_:)))
-      (layer.subviews.suffix(2)).enumerated().forEach { i,v in
-        if let b = v as? UIButton { b.tag = i == 0 ? 105 : 106 }
-      }
+      button("1",x:w-146*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
+      button("2",x:w-63*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
       let swipe = UIPanGestureRecognizer(target:self,action:#selector(swipeSMB(_:)))
       swipe.cancelsTouchesInView = false
       layer.addGestureRecognizer(swipe)
-      button("−",x:w-112*unit,y:h-142*unit,width:22*unit,height:22*unit,action:#selector(pressMomentary(_:)))
-      layer.subviews.last?.tag = 102
-      button("+",x:w-81*unit,y:h-142*unit,width:22*unit,height:22*unit,action:#selector(pressMomentary(_:)))
-      layer.subviews.last?.tag = 103
-      button("A",x:w-50*unit,y:h-142*unit,width:30*unit,height:30*unit,action:#selector(pressMomentary(_:)))
-      layer.subviews.last?.tag = 100
+      button("−",x:w-54*unit,y:h-167*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
+      button("+",x:w-137*unit,y:h-108*unit-54*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
+      button("A",x:w-54*unit,y:h-146*unit,width:43*unit,height:43*unit,action:#selector(pressMomentary(_:)))
     } else if preset == 2 {
+      // Same original artwork / proportions, rearranged for Mario Kart.
+      // B moves into the old joystick area. +, -, A retain stock sizes.
       let left = 24*unit
-      for (i, label) in ["+","−","A"].enumerated() {
-        button(label,x:left+CGFloat(i)*23*unit,y:h-99*unit,width:19*unit,height:20*unit,action:#selector(pressMomentary(_:)))
-        layer.subviews.last?.tag = [103,102,100][i]
-      }
-      button("B",x:left,y:h-79*unit,width:77*unit,height:77*unit,action:#selector(pressMomentary(_:)))
-      layer.subviews.last?.tag = 101
-      // Small item D-pad, adjacent to the accelerate / lock area.
-      let pad = TCDirectionalPad(frame:CGRect(x:w-66*unit,y:h-133*unit,width:55*unit,height:55*unit))
+      button("B",x:left,y:h-94*unit,width:77*unit,height:77*unit,action:#selector(pressMomentary(_:)))
+      button("+",x:left,y:h-123*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
+      button("−",x:left+29*unit,y:h-123*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
+      button("A",x:left+59*unit,y:h-139*unit,width:43*unit,height:43*unit,action:#selector(pressMomentary(_:)))
+      // Item D-pad directly above the lock lane, at the far right.
+      let pad = TCDirectionalPad(frame:CGRect(x:w-75*unit,y:h-174*unit,width:66*unit,height:66*unit))
       pad.directionalPadType = 107
       pad.port = port
       pad.sharedInit()
       layer.addSubview(pad)
-      let throttle = UIButton(type:.custom)
-      throttle.frame = CGRect(x:w-100*unit,y:h-72*unit,width:93*unit,height:58*unit)
-      throttle.setTitle("2    →   🔒",for:.normal)
-      throttle.backgroundColor = UIColor(white:0.24,alpha:0.7)
-      throttle.layer.cornerRadius = 12
-      throttle.addTarget(self,action:#selector(gasDown(_:)),for:.touchDown)
-      throttle.addTarget(self,action:#selector(gasUp(_:)),for:[.touchUpInside,.touchUpOutside,.touchCancel])
-      throttle.addGestureRecognizer(UIPanGestureRecognizer(target:self,action:#selector(gasPan(_:))))
-      layer.addSubview(throttle)
+      // Reuse the large right-side button and add a distinct latch target.
+      button("2",x:w-151*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(gasDown(_:)))
+      let gas = layer.subviews.last as! TCButton
+      gas.removeTarget(self, action:#selector(releaseMomentary(_:)), for:[.touchUpInside,.touchUpOutside,.touchCancel])
+      gas.addTarget(self,action:#selector(gasUp(_:)),for:[.touchUpInside,.touchUpOutside,.touchCancel])
+      let lock = UIButton(type:.system)
+      lock.frame = CGRect(x:w-62*unit,y:h-91*unit,width:52*unit,height:62*unit)
+      lock.setTitle("→ 🔒",for:.normal)
+      lock.setTitleColor(.white,for:.normal)
+      lock.backgroundColor = UIColor(white:0.24,alpha:0.65)
+      lock.layer.cornerRadius = 10
+      lock.addTarget(self,action:#selector(toggleGasLock(_:)),for:.touchUpInside)
+      layer.addSubview(lock)
+      let pan = UIPanGestureRecognizer(target:self,action:#selector(gasPan(_:)))
+      pan.cancelsTouchesInView = false
+      gas.addGestureRecognizer(pan)
     }
     button("HOME",x:w/2-17*unit,y:h-23*unit,width:34*unit,height:20*unit,action:#selector(pressMomentary(_:)))
     layer.subviews.last?.tag = 104
@@ -150,7 +168,7 @@ class TCSidewaysWiiPad: TCWiiPad {
     }
     if b != nil { activateSMB(b?.tag) }
   }
-  @objc private func gasDown(_ b:UIButton) {
+  @objc private func toggleGasLock(_ b:UIButton) {\n    gasLocked = !gasLocked\n    TCManagerInterface.setButtonStateFor(106,controller:port,state:gasLocked)\n    b.setTitle(gasLocked ? "🔒" : "→ 🔒",for:.normal)\n  }\n  @objc private func gasDown(_ b:UIButton) {
     if gasLocked {
       gasLocked = false
       gasHeld = false
@@ -167,12 +185,12 @@ class TCSidewaysWiiPad: TCWiiPad {
     }
   }
   @objc private func gasPan(_ g:UIPanGestureRecognizer) {
-    if g.state == .began { gasDown(g.view as! UIButton) }
+    // Touch-down already activates gas; avoid toggling it twice.\n    if g.state == .began && !gasLocked {\n      TCManagerInterface.setButtonStateFor(106,controller:port,state:true)\n    }
     if g.state == .changed && g.translation(in:g.view).x > 35 {
       gasLocked = true
       gasHeld = true
       TCManagerInterface.setButtonStateFor(106,controller:port,state:true)
-      (g.view as? UIButton)?.setTitle("2    🔒",for:.normal)
+      overlay?.subviews.compactMap{$0 as? UIButton}.last?.setTitle("🔒",for:.normal)
     }
     if g.state == .ended || g.state == .cancelled {
       if !gasLocked { gasUp(g.view as! UIButton) }
