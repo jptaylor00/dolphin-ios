@@ -168,7 +168,12 @@ class TCSidewaysWiiPad: TCWiiPad {
     }
     if b != nil { activateSMB(b?.tag) }
   }
-  @objc private func toggleGasLock(_ b:UIButton) {\n    gasLocked = !gasLocked\n    TCManagerInterface.setButtonStateFor(105,controller:port,state:gasLocked)\n    b.setTitle(gasLocked ? "🔒" : "→ 🔒",for:.normal)\n  }\n  @objc private func gasDown(_ b:UIButton) {
+  @objc private func toggleGasLock(_ b:UIButton) {
+    gasLocked = !gasLocked
+    TCManagerInterface.setButtonStateFor(105,controller:port,state:gasLocked)
+    b.setTitle(gasLocked ? "🔒" : "→ 🔒",for:.normal)
+  }
+  @objc private func gasDown(_ b:UIButton) {
     if gasLocked {
       gasLocked = false
       gasHeld = false
@@ -185,7 +190,10 @@ class TCSidewaysWiiPad: TCWiiPad {
     }
   }
   @objc private func gasPan(_ g:UIPanGestureRecognizer) {
-    // Touch-down already activates gas; avoid toggling it twice.\n    if g.state == .began && !gasLocked {\n      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)\n    }
+    // Touch-down already activates gas; avoid toggling it twice.
+    if g.state == .began && !gasLocked {
+      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)
+    }
     if g.state == .changed && g.translation(in:g.view).x > 35 {
       gasLocked = true
       gasHeld = true
