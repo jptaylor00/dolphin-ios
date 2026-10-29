@@ -1,6 +1,11 @@
 name: Build customized DolphiniOS
 on:
   workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Source/iOS/App/DolphiniOS/UI/Emulation/TouchController/**'
+      - '.github/workflows/custom-ipa.yml'
 jobs:
   build:
     runs-on: macos-15
