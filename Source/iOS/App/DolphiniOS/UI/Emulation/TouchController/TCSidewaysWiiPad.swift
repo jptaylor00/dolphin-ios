@@ -1,49 +1,153 @@
 // Copyright 2026
 // SPDX-License-Identifier: GPL-2.0-or-later
+
 import Foundation
 import UIKit
 
-// Each preset is an overlay on the stock sideways Wii Remote controller.
-// The original controls are restored when preset 0 is selected.
+// A single continuous touch surface for Mario Kart's accelerate -> lock slide.
+// Neither a separate button nor a pan recognizer can steal the moving finger.
+private final class TCGasLockControl: UIView {
+  var port: Int = 0
+  private var locked = false
+  private var trackingOne = false
+  private let oneImage = UIImageView()
+  private let lockLabel = UILabel()
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    setup()
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    setup()
+  }
+
+  private func setup() {
+    isMultipleTouchEnabled = false
+    backgroundColor = .clear
+
+    oneImage.frame = CGRect(x: 0, y: 2, width: 84, height: 84)
+    oneImage.contentMode = .scaleAspectFit
+    oneImage.image = UIImage(named: "wiimote_one", in: Bundle(for: TCButton.self), compatibleWith: nil)
+    oneImage.isUserInteractionEnabled = false
+    addSubview(oneImage)
+
+    lockLabel.frame = CGRect(x: 94, y: 13, width: 70, height: 60)
+    lockLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+    lockLabel.textAlignment = .center
+    lockLabel.textColor = .white
+    lockLabel.backgroundColor = UIColor(white: 0.23, alpha: 0.72)
+    lockLabel.layer.cornerRadius = 12
+    lockLabel.clipsToBounds = true
+    lockLabel.isUserInteractionEnabled = false
+    addSubview(lockLabel)
+    updateAppearance()
+  }
+
+  private func setGas(_ isDown: Bool) {
+    TCManagerInterface.setButtonStateFor(105, controller: port, state: isDown)
+  }
+
+  private func updateAppearance() {
+    lockLabel.text = locked ? "🔒" : "→ 🔒"
+    lockLabel.layer.borderColor = UIColor.white.cgColor
+    lockLabel.layer.borderWidth = locked ? 2 : 0
+    oneImage.alpha = locked ? 0.8 : 1.0
+  }
+
+  func reset() {
+    trackingOne = false
+    locked = false
+    setGas(false)
+    updateAppearance()
+  }
+
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    guard let touch = touches.first else { return }
+    // The lock region is part of THIS view, not a separate UIButton.
+    let x = touch.location(in: self).x
+    trackingOne = x < 94
+    if !trackingOne {
+      locked.toggle() // Also allow an accessible tap to lock/unlock.
+      setGas(locked)
+    } else {
+      // Touching 1 while latched unlatches, but still holds gas until lift.
+      locked = false
+      setGas(true)
+    }
+    updateAppearance()
+  }
+
+  override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+    guard trackingOne, !locked, let touch = touches.first else { return }
+    if touch.location(in: self).x >= 94 {
+      locked = true
+      setGas(true)
+      updateAppearance()
+      UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+  }
+
+  private func finishTouch() {
+    if !locked { setGas(false) }
+    trackingOne = false
+    updateAppearance()
+  }
+
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    finishTouch()
+  }
+
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    finishTouch()
+  }
+}
+
+// Super Mario Bros and the standard sideways remote use the ORIGINAL nib,
+// button transforms and finger-tracking code from the first custom build.
+// Only Mario Kart gets a custom overlay. Never redraw the SMB controls.
 class TCSidewaysWiiPad: TCWiiPad {
   private var preset = 0
   private var overlay: UIView?
-  private var gasLocked = false
-  private var gasHeld = false
-  private var gasTouchStart: CGPoint?
-  private var activeSMBButton: Int?
+  private var gasControl: TCGasLockControl?
   private var lastLayoutSize: CGSize = .zero
 
   @objc func setPreset(_ value: Int) {
-    if preset == value { return }
-    releaseCustomInputs()
+    guard preset != value else { return }
+    releaseInputs()
     preset = value
     rebuildOverlay()
   }
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    if real_view?.bounds.size != lastLayoutSize && preset != 0 {
+    if preset == 2, let canvas = real_view, canvas.bounds.size != lastLayoutSize {
       rebuildOverlay()
     }
   }
 
-  private func releaseCustomInputs() {
-    for key in [101,105,106,107,108,109,110] {
+  private func releaseInputs() {
+    gasControl?.reset()
+    for key in 100...110 {
       TCManagerInterface.setButtonStateFor(key, controller: port, state: false)
     }
-    gasHeld = false
-    gasLocked = false
-    activeSMBButton = nil
   }
 
   private func rebuildOverlay() {
+    gasControl?.reset()
+    gasControl = nil
     overlay?.removeFromSuperview()
     overlay = nil
+
     guard let canvas = real_view else { return }
     lastLayoutSize = canvas.bounds.size
-    for view in canvas.subviews { view.isHidden = preset != 0 }
-    guard preset != 0 else { return }
+
+    // Do not replace or reposition any original control for SMB.
+    for view in canvas.subviews {
+      view.isHidden = preset == 2
+    }
+    guard preset == 2 else { return }
 
     let layer = UIView(frame: canvas.bounds)
     layer.backgroundColor = .clear
@@ -52,156 +156,43 @@ class TCSidewaysWiiPad: TCWiiPad {
     overlay = layer
     let w = layer.bounds.width
     let h = layer.bounds.height
-    let unit = min(w / 360, h / 190)
-    // Reuse DolphiniOS's real Wii button images and their stock proportions.
-    func button(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, action: Selector) {
-      let key: Int
-      switch text {
-      case "1": key = 105
-      case "2": key = 106
-      case "B": key = 101
-      case "A": key = 100
-      case "+": key = 103
-      case "−": key = 102
-      default: key = 104
-      }
-      let b = TCButton(frame: CGRect(x:x, y:y, width:width, height:height))
+
+    // iOS points, NOT proportional 360x190 units. The old overlay doubled
+    // physical button sizes on landscape iPhones.
+    func button(_ key: Int, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
+      let b = TCButton(frame: CGRect(x: x, y: y, width: width, height: height))
       b.controllerButton = key
       b.port = port
-      b.tag = key
-      // TCButton installs its own touch actions, so replace them rather than
-      // causing duplicate presses and releases.
-      b.removeTarget(nil, action:nil, for:.allEvents)
-      b.addTarget(self, action: action, for: .touchDown)
-      b.addTarget(self, action: #selector(releaseMomentary(_:)),
-                  for: [.touchUpInside,.touchUpOutside,.touchCancel])
-      if key == 105 || key == 106 {
-        let type = TCButtonType(rawValue:key)!
-        b.setImage(b.getImage(named:type.getImageName(), scale:type.getButtonScale() * 2), for:.normal)
-        b.setImage(b.getImage(named:type.getImageName()+"_pressed", scale:type.getButtonScale() * 2), for:.selected)
-      }
+      b.addTarget(b, action: #selector(TCButton.buttonReleased),
+                  for: [.touchUpOutside, .touchCancel])
       layer.addSubview(b)
     }
-    // Controls are positioned relative to the landscape screen.
-    if preset == 1 {
-      // Recreate the ORIGINAL custom sideways arrangement, not a redesigned UI.
-      // 128pt joystick at lower left; original Wii 1/2 artwork doubled at right.
-      let joy = TCDirectionalPad(frame:CGRect(x:0,y:h-128*unit,width:128*unit,height:128*unit))
-      joy.directionalPadType = 107
-      joy.sidewaysJoystick = true
-      joy.port = port
-      joy.sharedInit()
-      layer.addSubview(joy)
-      button("1",x:w-170*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
-      button("2",x:w-87*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(pressSMB(_:)))
-      let swipe = UIPanGestureRecognizer(target:self,action:#selector(swipeSMB(_:)))
-      swipe.cancelsTouchesInView = false
-      layer.addGestureRecognizer(swipe)
-      button("−",x:w-54*unit,y:h-167*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
-      button("+",x:w-137*unit,y:h-108*unit-54*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
-      button("A",x:w-54*unit,y:h-146*unit,width:43*unit,height:43*unit,action:#selector(pressMomentary(_:)))
-    } else if preset == 2 {
-      // Same original artwork / proportions, rearranged for Mario Kart.
-      // B moves into the old joystick area. +, -, A retain stock sizes.
-      let left = 24*unit
-      button("B",x:left,y:h-94*unit,width:77*unit,height:77*unit,action:#selector(pressMomentary(_:)))
-      button("+",x:left,y:h-123*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
-      button("−",x:left+29*unit,y:h-123*unit,width:26*unit,height:26*unit,action:#selector(pressMomentary(_:)))
-      button("A",x:left+59*unit,y:h-139*unit,width:43*unit,height:43*unit,action:#selector(pressMomentary(_:)))
-      // Item D-pad directly above the lock lane, at the far right.
-      let pad = TCDirectionalPad(frame:CGRect(x:w-75*unit,y:h-174*unit,width:66*unit,height:66*unit))
-      pad.directionalPadType = 107
-      pad.port = port
-      pad.sharedInit()
-      layer.addSubview(pad)
-      // Reuse the large right-side button and add a distinct latch target.
-      button("1",x:w-151*unit,y:h-103*unit,width:86*unit,height:86*unit,action:#selector(gasDown(_:)))
-      let gas = layer.subviews.last as! TCButton
-      gas.removeTarget(self, action:#selector(releaseMomentary(_:)), for:[.touchUpInside,.touchUpOutside,.touchCancel])
-      gas.addTarget(self,action:#selector(gasUp(_:)),for:[.touchUpInside,.touchUpOutside,.touchCancel])
-      let lock = UIButton(type:.system)
-      lock.frame = CGRect(x:w-62*unit,y:h-91*unit,width:52*unit,height:62*unit)
-      lock.setTitle("→ 🔒",for:.normal)
-      lock.setTitleColor(.white,for:.normal)
-      lock.backgroundColor = UIColor(white:0.24,alpha:0.65)
-      lock.layer.cornerRadius = 10
-      lock.addTarget(self,action:#selector(toggleGasLock(_:)),for:.touchUpInside)
-      layer.addSubview(lock)
-      let pan = UIPanGestureRecognizer(target:self,action:#selector(gasPan(_:)))
-      pan.cancelsTouchesInView = false
-      gas.addGestureRecognizer(pan)
-    }
-    button("HOME",x:w/2-17*unit,y:h-23*unit,width:34*unit,height:20*unit,action:#selector(pressMomentary(_:)))
-    layer.subviews.last?.tag = 104
-  }
 
-  @objc private func pressMomentary(_ b: UIButton) {
-    TCManagerInterface.setButtonStateFor(b.tag, controller:port,state:true)
-  }
-  @objc private func releaseMomentary(_ b: UIButton) {
-    if b.tag == 105 || b.tag == 106 {
-      TCManagerInterface.setButtonStateFor(b.tag,controller:port,state:false)
-      activeSMBButton = nil
-    } else if b.tag > 0 {
-      TCManagerInterface.setButtonStateFor(b.tag,controller:port,state:false)
-    }
-  }
-  @objc private func pressSMB(_ b:UIButton) { activateSMB(b.tag) }
-  private func activateSMB(_ tag:Int?) {
-    if activeSMBButton == tag { return }
-    if let old = activeSMBButton {
-      TCManagerInterface.setButtonStateFor(old,controller:port,state:false)
-    }
-    activeSMBButton = tag
-    if let tag = tag {
-      TCManagerInterface.setButtonStateFor(tag,controller:port,state:true)
-    }
-  }
-  @objc private func swipeSMB(_ gesture:UIPanGestureRecognizer) {
-    guard let layer = overlay else { return }
-    if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
-      activateSMB(nil); return
-    }
-    let p = gesture.location(in:layer)
-    let b = layer.subviews.compactMap{$0 as? UIButton}.first{
-      ($0.tag == 105 || $0.tag == 106) && $0.frame.contains(p)
-    }
-    if b != nil { activateSMB(b?.tag) }
-  }
-  @objc private func toggleGasLock(_ b:UIButton) {
-    gasLocked = !gasLocked
-    TCManagerInterface.setButtonStateFor(105,controller:port,state:gasLocked)
-    b.setTitle(gasLocked ? "🔒" : "→ 🔒",for:.normal)
-  }
-  @objc private func gasDown(_ b:UIButton) {
-    if gasLocked {
-      gasLocked = false
-      gasHeld = false
-      TCManagerInterface.setButtonStateFor(105,controller:port,state:false)
-    } else {
-      gasHeld = true
-      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)
-    }
-  }
-  @objc private func gasUp(_ b:UIButton) {
-    if !gasLocked {
-      gasHeld = false
-      TCManagerInterface.setButtonStateFor(105,controller:port,state:false)
-    }
-  }
-  @objc private func gasPan(_ g:UIPanGestureRecognizer) {
-    // Touch-down already activates gas; avoid toggling it twice.
-    if g.state == .began && !gasLocked {
-      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)
-    }
-    if g.state == .changed && g.translation(in:g.view).x > 35 {
-      gasLocked = true
-      gasHeld = true
-      TCManagerInterface.setButtonStateFor(105,controller:port,state:true)
-      overlay?.subviews.compactMap{$0 as? UIButton}.first(where: {$0.currentTitle == "→ 🔒"})?.setTitle("🔒",for:.normal)
-    }
-    if g.state == .ended || g.state == .cancelled {
-      if !gasLocked { gasUp(g.view as! UIButton) }
-    }
+    // Original Mario Kart controls: B moved down, + / - / A directly above.
+    // Native images and original sizes, rather than stretched custom images.
+    button(101, x: 24, y: h - 94, width: 77, height: 77)  // B
+    button(103, x: 24, y: h - 127, width: 26, height: 26) // +
+    button(102, x: 53, y: h - 127, width: 26, height: 26) // -
+    button(100, x: 83, y: h - 143, width: 43, height: 43) // A
+
+    // Item directional pad is at the far right, ABOVE the accelerator.
+    let pad = TCDirectionalPad(frame: CGRect(x: w - 78, y: h - 185,
+                                             width: 66, height: 66))
+    pad.directionalPadType = 107
+    pad.port = port
+    layer.addSubview(pad)
+    pad.sharedInit() // needs a superview for correct coordinate conversion
+
+    // "1 -> lock" is one continuous view. Swiping RIGHT latches the same
+    // Wii 1 input; it cannot hit the B button across the screen.
+    let gas = TCGasLockControl(frame: CGRect(x: w - 181, y: h - 108,
+                                             width: 169, height: 88))
+    gas.port = port
+    layer.addSubview(gas)
+    gasControl = gas
+
+    // Leave the original HOME icon/position in place, but in the overlay
+    // so it remains tappable above the otherwise hidden nib.
+    button(104, x: w / 2 - 16, y: h - 32, width: 32, height: 32)
   }
 }
