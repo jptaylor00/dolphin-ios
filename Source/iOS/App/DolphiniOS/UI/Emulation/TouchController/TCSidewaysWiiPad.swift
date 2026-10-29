@@ -9,8 +9,8 @@ import UIKit
 private final class TCGasLockControl: UIView {
   var port: Int = 0
   private var locked = false
-  private var trackingOne = false
-  private let oneImage = UIImageView()
+  private var trackingTwo = false
+  private let twoImage = UIImageView()
   private let lockLabel = UILabel()
 
   override init(frame: CGRect) {
@@ -27,11 +27,11 @@ private final class TCGasLockControl: UIView {
     isMultipleTouchEnabled = false
     backgroundColor = .clear
 
-    oneImage.frame = CGRect(x: 0, y: 2, width: 84, height: 84)
-    oneImage.contentMode = .scaleAspectFit
-    oneImage.image = UIImage(named: "wiimote_one", in: Bundle(for: TCButton.self), compatibleWith: nil)
-    oneImage.isUserInteractionEnabled = false
-    addSubview(oneImage)
+    twoImage.frame = CGRect(x: 0, y: 2, width: 84, height: 84)
+    twoImage.contentMode = .scaleAspectFit
+    twoImage.image = UIImage(named: "wiimote_two", in: Bundle(for: TCButton.self), compatibleWith: nil)
+    twoImage.isUserInteractionEnabled = false
+    addSubview(twoImage)
 
     lockLabel.frame = CGRect(x: 94, y: 13, width: 70, height: 60)
     lockLabel.font = .systemFont(ofSize: 22, weight: .semibold)
@@ -46,18 +46,18 @@ private final class TCGasLockControl: UIView {
   }
 
   private func setGas(_ isDown: Bool) {
-    TCManagerInterface.setButtonStateFor(105, controller: port, state: isDown)
+    TCManagerInterface.setButtonStateFor(106, controller: port, state: isDown)
   }
 
   private func updateAppearance() {
     lockLabel.text = locked ? "🔒" : "→ 🔒"
     lockLabel.layer.borderColor = UIColor.white.cgColor
     lockLabel.layer.borderWidth = locked ? 2 : 0
-    oneImage.alpha = locked ? 0.8 : 1.0
+    twoImage.alpha = locked ? 0.8 : 1.0
   }
 
   func reset() {
-    trackingOne = false
+    trackingTwo = false
     locked = false
     setGas(false)
     updateAppearance()
@@ -67,12 +67,12 @@ private final class TCGasLockControl: UIView {
     guard let touch = touches.first else { return }
     // The lock region is part of THIS view, not a separate UIButton.
     let x = touch.location(in: self).x
-    trackingOne = x < 94
-    if !trackingOne {
+    trackingTwo = x < 94
+    if !trackingTwo {
       locked.toggle() // Also allow an accessible tap to lock/unlock.
       setGas(locked)
     } else {
-      // Touching 1 while latched unlatches, but still holds gas until lift.
+      // Touching 2 while latched unlatches, but still holds gas until lift.
       locked = false
       setGas(true)
     }
@@ -80,7 +80,7 @@ private final class TCGasLockControl: UIView {
   }
 
   override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-    guard trackingOne, !locked, let touch = touches.first else { return }
+    guard trackingTwo, !locked, let touch = touches.first else { return }
     if touch.location(in: self).x >= 94 {
       locked = true
       setGas(true)
@@ -91,7 +91,7 @@ private final class TCGasLockControl: UIView {
 
   private func finishTouch() {
     if !locked { setGas(false) }
-    trackingOne = false
+    trackingTwo = false
     updateAppearance()
   }
 
@@ -159,10 +159,17 @@ class TCSidewaysWiiPad: TCWiiPad {
 
     // iOS points, NOT proportional 360x190 units. The old overlay doubled
     // physical button sizes on landscape iPhones.
-    func button(_ key: Int, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
+    func button(_ key: Int, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, imageScale: CGFloat = 1) {
       let b = TCButton(frame: CGRect(x: x, y: y, width: width, height: height))
       b.controllerButton = key
       b.port = port
+      // Enlarging only the frame expands the hit box, not the Wii artwork.
+      // Re-render the image at the same 1.5x factor as B's frame.
+      if imageScale != 1, let type = TCButtonType(rawValue: key) {
+        let scale = type.getButtonScale() * imageScale
+        b.setImage(b.getImage(named: type.getImageName(), scale: scale), for: .normal)
+        b.setImage(b.getImage(named: type.getImageName() + "_pressed", scale: scale), for: .selected)
+      }
       b.addTarget(b, action: #selector(TCButton.buttonReleased),
                   for: [.touchUpOutside, .touchCancel])
       layer.addSubview(b)
@@ -170,21 +177,21 @@ class TCSidewaysWiiPad: TCWiiPad {
 
     // Original Mario Kart controls: B moved down, + / - / A directly above.
     // Native images and original sizes, rather than stretched custom images.
-    button(101, x: 24, y: h - 94, width: 77, height: 77)  // B
-    button(103, x: 24, y: h - 127, width: 26, height: 26) // +
-    button(102, x: 53, y: h - 127, width: 26, height: 26) // -
-    button(100, x: 83, y: h - 143, width: 43, height: 43) // A
+    button(101, x: 24, y: h - 132.5, width: 115.5, height: 115.5, imageScale: 1.5) // B x1.5
+    button(103, x: 24, y: h - 165.5, width: 26, height: 26) // +, above B
+    button(102, x: 53, y: h - 165.5, width: 26, height: 26) // -, above B
+    button(100, x: 83, y: h - 181.5, width: 43, height: 43) // A, above B
 
     // Item directional pad is at the far right, ABOVE the accelerator.
-    let pad = TCDirectionalPad(frame: CGRect(x: w - 78, y: h - 185,
-                                             width: 66, height: 66))
+    let pad = TCDirectionalPad(frame: CGRect(x: w - 111, y: h - 218,
+                                             width: 99, height: 99)) // x1.5, same right and bottom edges
     pad.directionalPadType = 107
     pad.port = port
     layer.addSubview(pad)
     pad.sharedInit() // needs a superview for correct coordinate conversion
 
-    // "1 -> lock" is one continuous view. Swiping RIGHT latches the same
-    // Wii 1 input; it cannot hit the B button across the screen.
+    // "2 -> lock" is one continuous view. Swiping RIGHT latches the same
+    // Wii 2 input; it cannot hit the B button across the screen.
     let gas = TCGasLockControl(frame: CGRect(x: w - 181, y: h - 108,
                                              width: 169, height: 88))
     gas.port = port
