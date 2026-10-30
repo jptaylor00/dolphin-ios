@@ -15,7 +15,7 @@
 #import "Core/HW/SI/SI_Device.h"
 #import "Core/HW/Wiimote.h"
 #import "Core/HW/WiimoteEmu/WiimoteEmu.h"
-#import "TCManagerInterface.h"
+#import "TouchController/TCManagerInterface.h"
 #import "Core/IOS/USB/Emulated/Skylanders/Skylander.h"
 #import "Core/State.h"
 #import "Core/System.h"
