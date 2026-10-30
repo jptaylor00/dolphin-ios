@@ -48,6 +48,17 @@ private extension Float {
     }
   }
 
+  // On-screen Mario Kart SHAKE uses the same short pulse as physical phone shake.
+  func triggerMarioKartShake() {
+    clearPhoneShake()
+    for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+      TCManagerInterface.setButtonStateFor(key.rawValue, controller: port, state: true)
+    }
+    let release = DispatchWorkItem { [weak self] in self?.clearPhoneShake() }
+    phoneShakeReleaseWork = release
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: release)
+  }
+
   private func sendPhoneShakeIfNeeded(_ acceleration: CMAcceleration) {
     wheelLock.lock()
     let active = wheelMode || joystickActive
