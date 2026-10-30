@@ -4,6 +4,11 @@
 import CoreMotion
 import Foundation
 import UIKit
+private extension Float {
+  func clamped(to range: ClosedRange<Float>) -> Float {
+    min(range.upperBound, max(range.lowerBound, self))
+  }
+}
 
 @objc public class TCDeviceMotion: NSObject {
   @objc public static let shared = TCDeviceMotion()
@@ -25,7 +30,24 @@ import UIKit
   private var wheelLastSampleAt: TimeInterval = 0
   private var wheelSteeringDegrees = 0.0
   private var wheelRecoveryTimer: Timer?
-  private var wheelInvert = false
+  private var wheelInvert = true
+  private var wheelSensitivity = 1.0
+  private var joystickActive = false
+  @objc var marioKartSteeringSensitivity: Double {
+    get { wheelLock.lock(); defer { wheelLock.unlock() }; return wheelSensitivity }
+    set { wheelLock.lock(); wheelSensitivity = max(0.4, min(2.5, newValue)); wheelLock.unlock() }
+  }
+  @objc func setMarioKartJoystickMode(_ active: Bool) {
+    wheelLock.lock()
+    joystickActive = active
+    if active { setWheelTilt(0) }
+    wheelLock.unlock()
+  }
+  @objc func setMarioKartJoystickValue(_ value: Float) {
+    wheelLock.lock()
+    if joystickActive { setWheelTilt(max(-0.5, min(0.5, value * 0.5))) }
+    wheelLock.unlock()
+  }
 
   // A Wii Wheel is turned around the phone's screen normal, so use
   // Core Motion's fused quaternion instead of accelerometer X/Y gravity.
@@ -71,7 +93,9 @@ import UIKit
       self.wheelSteeringDegrees = angle * 180.0 / .pi
       self.wheelLastSampleAt = Date().timeIntervalSince1970
       // Axis pairs are complementary: ±0.5 maps to Dolphin Tilt x ±1.
-      self.setWheelTilt(Float(angle / 0.85) * 0.5)
+      if !self.joystickActive {
+        self.setWheelTilt(Float(angle / 0.85 * self.wheelSensitivity).clamped(to: -1...1) * 0.5)
+      }
       self.wheelLock.unlock()
     }
   }

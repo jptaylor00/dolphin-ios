@@ -106,6 +106,7 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(receiveTitleChangedNotificationiOS) name:DOLHostTitleChangedNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(receiveRequestRenderWindowSizeNotificationiOS) name:DOLHostRequestRenderWindowSizeNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(receiveEmulationEndNotificationiOS) name:DOLEmulationDidEndNotification object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(marioKartModeChanged:) name:@"DOLMarioKartSteeringModeDidChange" object:nil];
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -117,6 +118,12 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   [[NSNotificationCenter defaultCenter] removeObserver:self name:DOLHostTitleChangedNotification object:nil];
   [[NSNotificationCenter defaultCenter] removeObserver:self name:DOLHostRequestRenderWindowSizeNotification object:nil];
   [[NSNotificationCenter defaultCenter] removeObserver:self name:DOLEmulationDidEndNotification object:nil];
+  [[NSNotificationCenter defaultCenter] removeObserver:self name:@"DOLMarioKartSteeringModeDidChange" object:nil];
+}
+
+- (void)marioKartModeChanged:(NSNotification*)notification {
+  [self updateVisibleTouchPadWithType:DOLEmulationVisibleTouchPadSidewaysWiimote];
+  [self recreateMenu];
 }
 
 - (void)recreateMenu {
@@ -191,9 +198,27 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
           style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
       }];
+      UIAction* sensitivity = [UIAction actionWithTitle:@"Steering Sensitivity"
+        image:[UIImage systemImageNamed:@"slider.horizontal.3"] identifier:nil handler:^(UIAction*) {
+        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Steering Sensitivity"
+          message:@"Adjust wheel response (0.4x – 2.5x)." preferredStyle:UIAlertControllerStyleAlert];
+        UISlider* slider = [[UISlider alloc] initWithFrame:CGRectMake(20, 65, 230, 32)];
+        slider.minimumValue = 0.4f;
+        slider.maximumValue = 2.5f;
+        slider.value = [TCDeviceMotion shared].marioKartSteeringSensitivity;
+        [slider addAction:[UIAction actionWithHandler:^(UIAction* _) {
+          [TCDeviceMotion shared].marioKartSteeringSensitivity = slider.value;
+        }] forControlEvents:UIControlEventValueChanged];
+        UIViewController* holder = [[UIViewController alloc] init];
+        holder.preferredContentSize = CGSizeMake(270, 105);
+        [holder.view addSubview:slider];
+        [alert setValue:holder forKey:@"contentViewController"];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+      }];
       [controllerActions addObject:[UIMenu menuWithTitle:@"Mario Kart Wheel"
         image:[UIImage systemImageNamed:@"steeringwheel"] identifier:nil options:0
-        children:@[recenterWheel, invertWheel, wheelDiagnostic]]];
+        children:@[recenterWheel, invertWheel, sensitivity, wheelDiagnostic]]];
     }
   }
 
@@ -542,7 +567,14 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   const bool marioKartMode =
       touchPad == DOLEmulationVisibleTouchPadSidewaysWiimote && _sidewaysPreset == 2;
   [self setMarioKartWheelInputConnected:marioKartMode];
-  [[TCDeviceMotion shared] setMarioKartWheelSteering:marioKartMode];
+  BOOL joystick = NO;
+  for (TCView* pad in self.touchPads) {
+    if ([pad isKindOfClass:[TCSidewaysWiiPad class]]) {
+      joystick = ((TCSidewaysWiiPad*)pad).marioKartJoystickMode;
+    }
+  }
+  [[TCDeviceMotion shared] setMarioKartWheelSteering:marioKartMode && !joystick];
+  [[TCDeviceMotion shared] setMarioKartJoystickMode:marioKartMode && joystick];
   [TCManagerInterface setButtonStateFor:118 controller:4 state:marioKartMode];
   if (_visibleTouchPad == touchPad) {
     return;
