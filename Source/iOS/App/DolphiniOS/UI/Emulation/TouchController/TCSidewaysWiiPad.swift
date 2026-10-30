@@ -284,6 +284,22 @@ class TCSidewaysWiiPad: TCWiiPad {
       layer.addSubview(b)
     }
 
+    // Mario Kart-only dedicated shake button, independent of physical shaking.
+    func shakeButton(x: CGFloat, y: CGFloat) {
+      let shake = UIButton(type: .system)
+      shake.frame = CGRect(x: x, y: y, width: 76, height: 32)
+      shake.setTitle("SHAKE", for: .normal)
+      shake.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
+      shake.setTitleColor(.white, for: .normal)
+      shake.backgroundColor = UIColor(white: 0.24, alpha: 0.85)
+      shake.layer.cornerRadius = 9
+      shake.addAction(UIAction { _ in
+        TCDeviceMotion.shared.triggerMarioKartShake()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+      }, for: .touchDown)
+      layer.addSubview(shake)
+    }
+
     // Keep EVERY existing control at its original physical size in both modes.
     // Wheel mode remains the existing button layout.
     if joystickMode {
@@ -311,6 +327,7 @@ class TCSidewaysWiiPad: TCWiiPad {
       drift.upwardTarget = CGRect(x: dpadFrame.midX - 22,
                                  y: dpadFrame.minY, width: 44, height: 34)
       layer.addSubview(drift)
+      shakeButton(x: w - 108, y: h - 270)
       let pad = TCDirectionalPad(frame: dpadFrame)
       pad.directionalPadType = 107
       pad.sidewaysWiiDPad = true
@@ -319,9 +336,11 @@ class TCSidewaysWiiPad: TCWiiPad {
       pad.sharedInit()
     } else {
       button(101, x: 24, y: h - 132.5, width: 115.5, height: 115.5, imageScale: 1.5)
-      button(103, x: 24, y: h - 165.5, width: 26, height: 26)
-      button(102, x: 53, y: h - 165.5, width: 26, height: 26)
-      button(100, x: 83, y: h - 181.5, width: 43, height: 43)
+      // Move the three small controls to upper-left to clear space above B.
+      button(103, x: 18, y: 12, width: 26, height: 26)
+      button(102, x: 47, y: 12, width: 26, height: 26)
+      button(100, x: 78, y: 4, width: 43, height: 43)
+      shakeButton(x: 43, y: h - 174)
 
       let pad = TCDirectionalPad(frame: CGRect(x: w - 111, y: h - 218,
                                                width: 99, height: 99))
