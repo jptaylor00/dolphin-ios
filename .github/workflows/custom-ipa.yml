@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'Source/iOS/App/DolphiniOS/UI/Emulation/TouchController/**'
+      - 'Source/iOS/App/DolphiniOS/UI/Emulation/EmulationiOSViewController.mm'
       - '.github/workflows/custom-ipa.yml'
 jobs:
   build:
