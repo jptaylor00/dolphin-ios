@@ -101,10 +101,11 @@ private extension Float {
   // Core Motion's fused quaternion instead of accelerometer X/Y gravity.
   // This also works when the phone is nearly flat.
   private func setWheelTilt(_ value: Float) {
-    // Dolphin's Left and Right tilt inputs are separate nonnegative axes.
-    // Feeding the same signed value to both makes steering stick to one side.
+    // Dolphin's directional axis inputs retain their signed direction.
+    // The left half of the stick must send a negative left-axis value;
+    // converting it to positive makes the left half read as neutral.
     TCManagerInterface.setAxisValueFor(
-      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: max(0, -value))
+      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: min(0, value))
     TCManagerInterface.setAxisValueFor(
       TCButtonType.wiiTiltRight.rawValue, controller: port, value: max(0, value))
   }
