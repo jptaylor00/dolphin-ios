@@ -116,11 +116,9 @@ struct TCInputChoice {
 enum TCInputCatalog {
   static let buttonCodes: [Int] = {
     var codes = Array(0...9)
-    codes += [20,21]
     codes += Array(100...110)
     codes += [132,133,134,200,201]
     codes += Array(300...312)
-    codes += [323,324]
     return codes
   }()
   static let axisCodes: [Int] = {
@@ -133,7 +131,7 @@ enum TCInputCatalog {
   static func supports(_ input: TCInput) -> Bool { (input.axis ? axisCodes : buttonCodes).contains(input.code) }
   static let names: [Int: String] = [0:"GC A",1:"GC B",2:"GC Start",3:"GC X",4:"GC Y",5:"GC Z",6:"GC Up",7:"GC Down",8:"GC Left",9:"GC Right",20:"GC L",21:"GC R",100:"Wii A",101:"Wii B",102:"Wii −",103:"Wii +",104:"Wii Home",105:"Wii 1",106:"Wii 2",107:"Wii raw Up",108:"Wii raw Down",109:"Wii raw Left",110:"Wii raw Right",132:"Shake X",133:"Shake Y",134:"Shake Z",200:"Nunchuk C",201:"Nunchuk Z",300:"Classic A",301:"Classic B",302:"Classic X",303:"Classic Y",304:"Classic −",305:"Classic +",306:"Classic Home",307:"Classic ZL",308:"Classic ZR",309:"Classic Up",310:"Classic Down",311:"Classic Left",312:"Classic Right",323:"Classic L",324:"Classic R"]
   static var choices: [TCInputChoice] {
-    var result = buttonCodes.map { TCInputChoice(name: names[$0] ?? "Input \($0)", inputs: [TCInput(code: $0)]) }
+    var result = (buttonCodes + [20,21,323,324]).map { TCInputChoice(name: names[$0] ?? "Input \($0)", inputs: [TCInput(code: $0, axis:[20,21,323,324].contains($0))]) }
     result += [TCInputChoice(name:"Shake", inputs:[132,133,134].map { TCInput(code:$0) })]
     for (name, base) in [("GC D-pad",6),("Wii D-pad (upright)",107),("Classic D-pad",309)] {
       result.append(TCInputChoice(name:name, inputs:(base...base+3).map { TCInput(code:$0) }, kind:.dpad))

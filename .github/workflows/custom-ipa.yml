@@ -27,6 +27,10 @@ jobs:
           CORE=Source/iOS/App/DolphiniOS/UI/Emulation/TouchController/Editor
           swiftc "$CORE/TCPreset.swift" "$CORE/TCPresetStore.swift" "$CORE/TCGestureEngine.swift" Tests/ControllerEditor/main.swift -o "$RUNNER_TEMP/controller-tests"
           "$RUNNER_TEMP/controller-tests"
+      - name: Type-check native controller UI
+        run: |
+          TOUCH=Source/iOS/App/DolphiniOS/UI/Emulation/TouchController
+          xcrun swiftc -typecheck -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios14.0 Tests/ControllerEditor/TCManagerStub.swift "$TOUCH"/*.swift "$TOUCH"/Editor/*.swift
       - name: Install build utilities
         run: |
           brew install cmake ninja bartycrouch

@@ -111,7 +111,7 @@ class TCDirectionalPad: UIView
     let point = gesture.location(in: self)
     var buttonPresses: [Bool] = [ false, false, false, false ]
     
-    if (gesture.state == .ended)
+    if (gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed)
     {
       imageView.image = dpadNoPressed
       self.isPressed = false
@@ -214,3 +214,4 @@ class TCDirectionalPad: UIView
   }
   
 }
+
