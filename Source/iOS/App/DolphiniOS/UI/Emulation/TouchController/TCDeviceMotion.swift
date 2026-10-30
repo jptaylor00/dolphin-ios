@@ -93,7 +93,7 @@ private extension Float {
   }
   @objc func setMarioKartJoystickValue(_ value: Float) {
     wheelLock.lock()
-    if joystickActive { setWheelTilt(max(-0.5, min(0.5, value * 0.5))) }
+    if joystickActive { setWheelTilt(max(-1, min(1, value))) }
     wheelLock.unlock()
   }
 
