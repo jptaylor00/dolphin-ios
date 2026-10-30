@@ -15,6 +15,7 @@
 #import "Core/HW/SI/SI_Device.h"
 #import "Core/HW/Wiimote.h"
 #import "Core/HW/WiimoteEmu/WiimoteEmu.h"
+#import "TCManagerInterface.h"
 #import "Core/IOS/USB/Emulated/Skylanders/Skylander.h"
 #import "Core/State.h"
 #import "Core/System.h"
@@ -138,6 +139,7 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
           }
         }
         [self updateVisibleTouchPadWithType:DOLEmulationVisibleTouchPadSidewaysWiimote];
+        [self updatePointerValuesOnWiiTouchPads];
         [self recreateMenu];
         [self.navigationController setNavigationBarHidden:true animated:true];
       }];
@@ -145,6 +147,25 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
       [layouts addObject:action];
     }
     [controllerActions addObject:[UIMenu menuWithTitle:@"Sideways Controller Layout" image:nil identifier:nil options:0 children:layouts]];
+
+    if (_sidewaysPreset == 2) {
+      UIAction* recenterWheel = [UIAction actionWithTitle:@"Recenter Mario Kart Steering"
+        image:[UIImage systemImageNamed:@"scope"] identifier:nil handler:^(UIAction*) {
+        [[TCDeviceMotion shared] recenterMarioKartWheelSteering];
+      }];
+      UIAction* invertWheel = [UIAction actionWithTitle:@"Invert Mario Kart Steering"
+        image:nil identifier:nil handler:^(UIAction*) {
+        TCDeviceMotion* motion = [TCDeviceMotion shared];
+        motion.marioKartSteeringInverted = !motion.marioKartSteeringInverted;
+        [motion recenterMarioKartWheelSteering];
+        [self recreateMenu];
+      }];
+      invertWheel.state = [TCDeviceMotion shared].marioKartSteeringInverted
+        ? UIMenuElementStateOn : UIMenuElementStateOff;
+      [controllerActions addObject:[UIMenu menuWithTitle:@"Mario Kart Wheel"
+        image:[UIImage systemImageNamed:@"steeringwheel"] identifier:nil options:0
+        children:@[recenterWheel, invertWheel]]];
+    }
   }
 
   if (gamecubeTouchPadAttached) {
@@ -409,6 +430,13 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 }
 
 - (void)updateVisibleTouchPadWithType:(DOLEmulationVisibleTouchPad)touchPad {
+  // Selecting a controller layout is not the same as changing the emulated
+  // Wii Remote's extension/orientation. Only enable the wheel behavior when
+  // the custom Mario Kart touch layout is actually visible.
+  const bool marioKartMode =
+      touchPad == DOLEmulationVisibleTouchPadSidewaysWiimote && _sidewaysPreset == 2;
+  [[TCDeviceMotion shared] setMarioKartWheelSteering:marioKartMode];
+  [TCManagerInterface setButtonStateFor:118 controller:4 state:marioKartMode];
   if (_visibleTouchPad == touchPad) {
     return;
   }
@@ -439,6 +467,7 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   }];
 
   _visibleTouchPad = touchPad;
+  [self updatePointerValuesOnWiiTouchPads];
 }
 
 - (void)updatePointerValuesOnWiiTouchPads {
@@ -447,12 +476,18 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   }
 
   TCWiiTouchIRMode irMode = TCWiiTouchIRModeNone;
+  // The in-game Wii pointer otherwise remains visible during Mario Kart.
+  // Suppress BOTH the touch IR cursor and IMU pointer, restoring their
+  // previous behavior as soon as Mario Kart's layout is hidden.
+  const bool suppressMarioKartPointer =
+      _visibleTouchPad == DOLEmulationVisibleTouchPadSidewaysWiimote && _sidewaysPreset == 2;
+  [TCManagerInterface setButtonStateFor:118 controller:4 state:suppressMarioKartPointer];
 
   if ([self isWiimoteTouchPadAttached]) {
     irMode = (TCWiiTouchIRMode)Config::Get(Config::MAIN_TOUCH_PAD_IR_MODE);
 
     ControllerEmu::ControlGroup* group = Wiimote::GetWiimoteGroup(0, WiimoteEmu::WiimoteGroup::IMUPoint);
-    group->enabled.SetValue(irMode == TCWiiTouchIRModeNone);
+    group->enabled.SetValue(irMode == TCWiiTouchIRModeNone && !suppressMarioKartPointer);
   }
 
   for (int i = 0; i < [self.touchPads count]; i++) {
@@ -461,7 +496,7 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     if ([padView isKindOfClass:[TCWiiPad class]]) {
       TCWiiPad* wiiPadView = (TCWiiPad*)padView;
 
-      [wiiPadView setTouchIRMode:irMode];
+      [wiiPadView setTouchIRMode:suppressMarioKartPointer ? TCWiiTouchIRModeNone : irMode];
       [wiiPadView resetPointer];
       [wiiPadView recalculatePointerValuesWithNew_rect:self.rendererView.bounds game_aspect:g_presenter->CalculateDrawAspectRatio()];
     }

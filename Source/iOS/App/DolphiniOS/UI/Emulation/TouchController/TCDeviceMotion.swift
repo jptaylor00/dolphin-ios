@@ -13,6 +13,43 @@ import Foundation
   private var orientation: UIInterfaceOrientation = .portrait
   private var motionEnabled = false
   private var port = 0
+
+  // Mario Kart Wii's Wii Wheel uses tilt, not the D-pad, for steering.
+  // Use relative phone rotation around the screen normal so a phone held
+  // upright does not constantly steer due to its absolute gravity vector.
+  private let wheelLock = NSLock()
+  private var wheelMode = false
+  private var wheelNeedsCenter = true
+  private var wheelCenterAngle = 0.0
+  private var wheelInvert = false
+
+  @objc func setMarioKartWheelSteering(_ enabled: Bool) {
+    wheelLock.lock()
+    if enabled && !wheelMode {
+      wheelNeedsCenter = true
+    }
+    wheelMode = enabled
+    wheelLock.unlock()
+  }
+
+  @objc func recenterMarioKartWheelSteering() {
+    wheelLock.lock()
+    wheelNeedsCenter = true
+    wheelLock.unlock()
+  }
+
+  @objc var marioKartSteeringInverted: Bool {
+    get {
+      wheelLock.lock()
+      defer { wheelLock.unlock() }
+      return wheelInvert
+    }
+    set {
+      wheelLock.lock()
+      wheelInvert = newValue
+      wheelLock.unlock()
+    }
+  }
   
   override required init() {
     //
@@ -39,7 +76,32 @@ import Foundation
       
       var x, y: Double
       var z = acceleration.z
-      
+      var customWheelAngle: Double? = nil
+
+      self.wheelLock.lock()
+      if self.wheelMode {
+        // Detect physical rotation of the phone in the screen plane. When the
+        // phone is nearly flat this projection is too small to be reliable;
+        // use neutral steering until it is held like an upright Wii Wheel.
+        let planarGravity = sqrt(acceleration.x * acceleration.x +
+                                 acceleration.y * acceleration.y)
+        if planarGravity >= 0.22 {
+          let phoneAngle = atan2(acceleration.y, acceleration.x)
+          if self.wheelNeedsCenter {
+            self.wheelCenterAngle = phoneAngle
+            self.wheelNeedsCenter = false
+          }
+          var relativeAngle = phoneAngle - self.wheelCenterAngle
+          while relativeAngle > .pi { relativeAngle -= 2 * .pi }
+          while relativeAngle < -.pi { relativeAngle += 2 * .pi }
+          relativeAngle = min(0.85, max(-0.85, relativeAngle))
+          customWheelAngle = relativeAngle * (self.wheelInvert ? -1.0 : 1.0)
+        } else {
+          customWheelAngle = 0
+        }
+      }
+      self.wheelLock.unlock()
+
       switch (self.orientation) {
       case .portrait, .unknown:
         x = -acceleration.x
@@ -55,6 +117,16 @@ import Foundation
         y = acceleration.x
       @unknown default:
         return
+      }
+
+      if let angle = customWheelAngle {
+        // At the calibrated center produce Dolphin's neutral gravity vector
+        // (0,0,+g), eliminating the constant side-steer from phone orientation.
+        // Roll around the Wii Wheel axis to steer left/right with phone twist.
+        // The existing negative G conversion below is intentional.
+        x = -sin(angle)
+        y = 0
+        z = -cos(angle)
       }
       
       // CMAccelerationData's units are G's
@@ -87,7 +159,11 @@ import Foundation
       let rotation_rate = data!.rotationRate
       
       var x, y: Double
-      let z = rotation_rate.z
+      var z = rotation_rate.z
+
+      self.wheelLock.lock()
+      let wheelActive = self.wheelMode
+      self.wheelLock.unlock()
       
       switch (self.orientation) {
       case .portrait, .unknown:
@@ -104,6 +180,14 @@ import Foundation
         y = rotation_rate.x
       @unknown default:
         return
+      }
+
+      // Relative steering is driven by calibrated gravity, not a second,
+      // independently rotated gyro stream (which also drifted the pointer).
+      if wheelActive {
+        x = 0
+        y = 0
+        z = 0
       }
       
       TCManagerInterface.setAxisValueFor(TCButtonType.wiiGyroPitchUp.rawValue, controller: self.port, value: Float(x))

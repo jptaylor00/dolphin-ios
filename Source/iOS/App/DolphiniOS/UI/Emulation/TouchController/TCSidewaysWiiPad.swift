@@ -186,6 +186,7 @@ class TCSidewaysWiiPad: TCWiiPad {
     let pad = TCDirectionalPad(frame: CGRect(x: w - 111, y: h - 218,
                                              width: 99, height: 99)) // x1.5, same right and bottom edges
     pad.directionalPadType = 107
+    pad.sidewaysWiiDPad = true
     pad.port = port
     layer.addSubview(pad)
     pad.sharedInit() // needs a superview for correct coordinate conversion

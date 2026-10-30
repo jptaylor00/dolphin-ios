@@ -15,6 +15,9 @@ class TCDirectionalPad: UIView
   @IBInspectable var directionalPadType: Int = 6 // default: GC D-Pad
   
   @IBInspectable var sidewaysJoystick: Bool = false
+  // Only Mario Kart's item D-pad needs sideways mapping. Upright/Nunchuk
+  // retains the original unrotated physical controller directions.
+  var sidewaysWiiDPad: Bool = false
   private var joystickThumb: UIImageView?
   var port: Int = 0
   var isPressed: Bool = false
@@ -92,11 +95,11 @@ class TCDirectionalPad: UIView
     let scale = length > radius ? radius / length : 1
     joystickThumb?.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
     let deadzone = radius * 0.23
-    // Dolphin remaps sideways Wii Remote input names to rotated physical D-pad
-    // bits: Up -> Right, Down -> Left, Left -> Up, Right -> Down.
-    // Apply the inverse rotation so the onscreen joystick remains intuitive:
-    // screen Up = Wii Left, Down = Wii Right, Left = Wii Down, Right = Wii Up.
-    let pressed = [dx > deadzone, dx < -deadzone, dy < -deadzone, dy > deadzone]
+    // Dolphin rotates D-pad bits in sideways mode. The previous mapping
+    // reversed both axes in Super Mario Bros on the device. Invert its sign,
+    // while keeping the sideways rotation (physical layout is unchanged).
+    // Wii input order: Up, Down, Left, Right.
+    let pressed = [dx < -deadzone, dx > deadzone, dy > deadzone, dy < -deadzone]
     for (i, value) in pressed.enumerated() {
       TCManagerInterface.setButtonStateFor(directionalPadType + i, controller: port, state: value)
     }
@@ -197,8 +200,14 @@ class TCDirectionalPad: UIView
       imageView.transform = CGAffineTransform.identity.rotated(by: radians)
     }
     
-    // Send button values
-    for (i, press) in buttonPresses.enumerated()
+    // Mario Kart's item D-pad is on a sideways Wii Remote. Translate the
+    // onscreen physical directions into Dolphin's rotated Wii input names.
+    // Same direction convention as the SMB sideways joystick above.
+    // Other D-pads (including the upright/Nunchuk pad) are left untouched.
+    let mappedPresses = sidewaysWiiDPad && directionalPadType == 107
+      ? [buttonPresses[2], buttonPresses[3], buttonPresses[1], buttonPresses[0]]
+      : buttonPresses
+    for (i, press) in mappedPresses.enumerated()
     {
       TCManagerInterface.setButtonStateFor(directionalPadType + i, controller: port, state: press)
     }
