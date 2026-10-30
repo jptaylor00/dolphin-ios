@@ -18,6 +18,7 @@ private extension Float {
   
   private var orientation: UIInterfaceOrientation = .portrait
   private var motionEnabled = false
+  var controllerMotionEnabled: Bool { motionEnabled }
   private var port = 0
 
   // Mario Kart Wii's Wii Wheel uses tilt, not the D-pad, for steering.

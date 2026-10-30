@@ -81,6 +81,22 @@ tapEngine.output = { _,value in tapped = value }
 tapEngine.begin(1,x:150,y:100); check(tapped == 0,"Tap does not act on touch down")
 tapEngine.end(1); check(tapped == 1,"Tap pulses on release")
 tapEngine.expirePulses(); check(tapped == 0,"Tap pulse releases")
+let padControl = TCControl(id:"pad",name:"Pad",kind:.dpad,frame:TCFrame(x:0.5,y:0.5,width:120,height:120),inputs:TCInputCatalog.sidewaysDirections)
+let dpadEngine = TCGestureEngine(layout:TCLayout(name:"Pad",controls:[padControl]))
+dpadEngine.width = 1000; dpadEngine.height = 200
+var directions = Set<Int>()
+dpadEngine.output = { input,value in if value == 0 { directions.remove(input.code) } else { directions.insert(input.code) } }
+dpadEngine.begin(1,x:500,y:50); check(directions == [109],"Kart screen Up maps to raw Left")
+dpadEngine.move(1,x:550,y:100); check(directions == [107],"Kart screen Right maps to raw Up")
+dpadEngine.end(1,cancelled:true); check(directions.isEmpty,"D-pad cancellation releases directions")
+let analog = TCControl(id:"analog",name:"Analog",kind:.joystick,frame:padControl.frame,inputs:(11...14).map { TCInput(code:$0,axis:true) })
+let analogEngine = TCGestureEngine(layout:TCLayout(name:"Analog",controls:[analog]))
+analogEngine.width = 1000; analogEngine.height = 200
+var axes:[Int:Float] = [:]
+analogEngine.output = { input,value in axes[input.code] = value }
+analogEngine.begin(1,x:450,y:100)
+check((axes[13] ?? 0) < -0.9 && (axes[14] ?? 0) == 0,"Left axis uses backend's negative sign")
+analogEngine.reset(); check(axes.values.allSatisfy { $0 == 0 },"Analog mode switch releases all axes")
 let mixer = TCInputMixer()
 var mixed:Float = 0
 mixer.output = { _,value in mixed = value }

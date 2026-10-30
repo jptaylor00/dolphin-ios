@@ -50,7 +50,17 @@ final class TCLayoutView: UIView {
   static func artwork(_ c: TCControl) -> UIView {
     let box = UIView()
     box.alpha = CGFloat(c.opacity)
-    if let name = c.artwork, let image = UIImage(named:name,in:Bundle(for:TCView.self),compatibleWith:nil) {
+    if c.kind == .wheelJoystick {
+      box.backgroundColor = UIColor(white:0.3,alpha:0.7)
+      box.layer.cornerRadius = CGFloat(c.frame.width)/2
+      box.layer.borderWidth = 1.5; box.layer.borderColor = UIColor.white.cgColor
+      let thumb = UIView(frame:CGRect(x:0,y:0,width:CGFloat(c.frame.width)*0.43,height:CGFloat(c.frame.height)*0.43))
+      thumb.backgroundColor = UIColor(white:0.72,alpha:0.9)
+      thumb.layer.cornerRadius = thumb.bounds.width/2
+      thumb.tag = 701
+      thumb.center = CGPoint(x:CGFloat(c.frame.width)/2,y:CGFloat(c.frame.height)/2)
+      box.addSubview(thumb)
+    } else if let name = c.artwork, let image = UIImage(named:name,in:Bundle(for:TCView.self),compatibleWith:nil) {
       let iv = UIImageView(image:image)
       iv.contentMode = .scaleAspectFit
       let w = CGFloat(c.artworkWidth ?? c.frame.width), h = CGFloat(c.artworkHeight ?? c.frame.height)
@@ -71,6 +81,12 @@ final class TCLayoutView: UIView {
       label.autoresizingMask = [.flexibleWidth,.flexibleHeight]
       box.addSubview(label)
     }
+    if c.kind == .joystick {
+      let thumb = UIImageView(image:UIImage(named:"gcwii_joystick",in:Bundle(for:TCView.self),compatibleWith:nil))
+      thumb.frame.size = CGSize(width:CGFloat(c.frame.width)*0.48,height:CGFloat(c.frame.height)*0.48)
+      thumb.center = CGPoint(x:CGFloat(c.frame.width)/2,y:CGFloat(c.frame.height)/2)
+      thumb.tag = 701; thumb.contentMode = .scaleAspectFit; box.addSubview(thumb)
+    }
     box.bounds.size = CGSize(width:CGFloat(c.frame.width),height:CGFloat(c.frame.height))
     return box
   }
@@ -84,11 +100,36 @@ final class TCLayoutView: UIView {
   }
   @objc func resetInputs() {
     pulseTimer?.invalidate(); pulseTimer = nil
-    engine.reset(); touchIDs.removeAll()
+    engine.reset(); touchIDs.removeAll(); refreshFeedback()
     TCDeviceMotion.shared.setMarioKartJoystickValue(0)
   }
   override func didMoveToWindow() { super.didMoveToWindow(); if window == nil { resetInputs() } }
+  private func refreshFeedback() {
+    for c in engine.layout.controls {
+      guard let art = controls[c.id] else { continue }
+      let contact = engine.contacts.values.first { $0.source == c.id }
+      let locked = engine.locked[c.id] != nil || engine.layout.gestures.contains {
+        $0.action == .lock && $0.target == c.id && engine.locked[$0.source] != nil
+      }
+      if locked {
+        art.layer.borderColor = UIColor.systemGreen.cgColor; art.layer.borderWidth = 2
+      } else if c.kind != .wheelJoystick {
+        art.layer.borderWidth = contact == nil ? 0 : 2
+        art.layer.borderColor = UIColor.white.cgColor
+      }
+      if let thumb = art.viewWithTag(701) {
+        let center = CGPoint(x:art.bounds.midX,y:art.bounds.midY)
+        let dx = contact.map { CGFloat($0.x-c.frame.x*engine.width) } ?? 0
+        let dy = contact.map { CGFloat($0.y-c.frame.y*engine.height) } ?? 0
+        let radius = max(1,min(art.bounds.width,art.bounds.height)*0.34)
+        let distance = sqrt(dx*dx+dy*dy)
+        let factor = distance > radius ? radius/distance : 1
+        thumb.center = CGPoint(x:center.x+dx*factor,y:center.y+dy*factor)
+      }
+    }
+  }
   private func update() {
+    refreshFeedback()
     TCDeviceMotion.shared.setMarioKartJoystickValue(engine.wheelValue)
     // Pulse lifetime is bounded even if a touch never ends. Do not extend an earlier pulse.
     if engine.pulseGeneration != pulseGeneration {

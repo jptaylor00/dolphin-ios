@@ -95,13 +95,16 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   private let toolbar = UIScrollView()
   private let status = UILabel()
   private let initial:TCPreset?
+  private let motionWasEnabled:Bool
   init(pad:TCView,gameID:String) {
     self.pad = pad; self.gameID = gameID
+    motionWasEnabled = TCDeviceMotion.shared.controllerMotionEnabled
     initial = pad.customPreset
     let captured = pad.editorDefaultLayouts()
     defaults = captured
     preset = pad.customPreset ?? TCPreset(name:"My Controller",context:pad.editorContext,gameID:gameID,layouts:captured)
     super.init(nibName:nil,bundle:nil)
+    TCDeviceMotion.shared.setMotionEnabled(false)
   }
   required init?(coder:NSCoder) { fatalError("init(coder:) has not been implemented") }
   override var supportedInterfaceOrientations:UIInterfaceOrientationMask { .landscape }
@@ -161,7 +164,10 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     }); present(alert,animated:true)
   }
   private func finish(_ value:TCPreset?) {
-    dismiss(animated:true) { self.pad.applyCustomPreset(value,index:self.layoutIndex) }
+    dismiss(animated:true) {
+      self.pad.applyCustomPreset(value,index:self.layoutIndex)
+      TCDeviceMotion.shared.setMotionEnabled(self.motionWasEnabled)
+    }
   }
   @objc private func cancel() { layoutIndex = min(pad.customLayoutIndex,(initial?.layouts.count ?? 1)-1); finish(initial) }
   @objc private func save() {
@@ -183,14 +189,14 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
           self.preset = TCPreset(name:"Default Copy",context:self.pad.editorContext,gameID:self.gameID,layouts:self.defaults)
           self.layoutIndex = 0; self.refresh()
         } else if index == 2 {
-          self.preset = TCPreset(name:"New Controller",context:self.pad.editorContext,gameID:self.gameID,layouts:[TCLayout(name:"Controls",controls:[])])
+          self.preset = TCPreset(name:"New Controller",context:self.pad.editorContext,gameID:self.gameID,layouts:self.pad.editorContext == "Sideways-2" ? [TCLayout(name:"Wheel",controls:[]),TCLayout(name:"Joystick",controls:[])] : [TCLayout(name:"Controls",controls:[])])
           self.layoutIndex = 0; self.refresh()
         } else if index == 3 {
           let picker = UIDocumentPickerViewController(forOpeningContentTypes:[.json],asCopy:true)
           picker.delegate = self; self.present(picker,animated:true)
         } else { self.presetActions(saved[index-4]) }
       }
-    } catch { error(error) }
+    } catch { self.error(error) }
   }
   private func presetActions(_ saved:TCPreset) {
     pick(saved.name,["Load & Play","Edit","Rename","Duplicate","Export JSON","Delete"]) { index in
@@ -244,7 +250,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   }
   private var availableChoices: [TCInputChoice] {
     TCInputCatalog.choices.filter { choice in
-      if choice.kind == .wheelJoystick { return pad.editorContext == "Sideways-2" }
+      if [.wheelJoystick,.mode,.recenter].contains(choice.kind) { return pad.editorContext == "Sideways-2" }
       return choice.inputs.allSatisfy { pad.port == 0 ? $0.code < 100 : $0.code >= 100 }
     }
   }

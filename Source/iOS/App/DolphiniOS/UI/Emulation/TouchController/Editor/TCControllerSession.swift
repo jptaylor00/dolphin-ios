@@ -23,7 +23,7 @@ extension TCView {
           guard let type = TCButtonType(rawValue:b.controllerButton) else { continue }
           let image = b.image(for:.normal)
           result.append(TCControl(name:TCInputCatalog.names[b.controllerButton] ?? "Button",frame:f,
-            inputs:[TCInput(code:b.controllerButton,axis:b.isAxis)],artwork:type.getImageName(),
+            inputs:[TCInput(code:b.controllerButton,axis:b.isAxis)],releaseOutside:b.sidewaysSlideEnabled,artwork:type.getImageName(),
             artworkWidth:image.map { Double($0.size.width * abs(b.transform.a)) },
             artworkHeight:image.map { Double($0.size.height * abs(b.transform.d)) }))
         } else if let pad = view as? TCDirectionalPad {
@@ -56,6 +56,14 @@ extension TCView {
       up.inputs = Array(pad.inputs.prefix(1))
       layout.controls.append(up)
       layout.gestures.append(TCGestureRule(source:drift.id,target:up.id,action:.addWhileHolding,inputs:up.inputs))
+    }
+    if editorContext == "Sideways-0" || editorContext == "Sideways-1" {
+      let sliding = result.filter { $0.releaseOutside }
+      for source in sliding {
+        for target in sliding {
+          layout.gestures.append(TCGestureRule(source:source.id,target:target.id,action:.replace,inputs:target.inputs))
+        }
+      }
     }
     if editorContext == "Sideways-2" {
       let shake = TCControl(name:"Shake",frame:TCFrame(x:0.5,y:0.5,width:64,height:44),inputs:[132,133,134].map { TCInput(code:$0) })

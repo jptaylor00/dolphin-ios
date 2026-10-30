@@ -227,7 +227,10 @@ private final class TCKartDriftThrow: UIView, TCCompositeCapture {
 class TCSidewaysWiiPad: TCWiiPad {
   private var preset = 0
   private var joystickMode = false
-  @objc var marioKartJoystickMode: Bool { customPreset == nil ? joystickMode : customLayoutIndex == 1 }
+  @objc var marioKartJoystickMode: Bool {
+    guard let custom = customPreset, custom.layouts.indices.contains(customLayoutIndex) else { return joystickMode }
+    return custom.layouts[customLayoutIndex].controls.contains { $0.kind == .wheelJoystick }
+  }
   override var editorContext: String { "Sideways-\(preset)" }
   override func editorDefaultLayouts() -> [TCLayout] {
     guard preset == 2 else { return super.editorDefaultLayouts() }

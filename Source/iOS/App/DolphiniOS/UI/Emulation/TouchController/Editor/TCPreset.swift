@@ -25,6 +25,7 @@ struct TCControl: Codable, Equatable {
   var opacity: Double = 1
   var haptic: Bool = true
   var tapOnly: Bool = false
+  var releaseOutside: Bool = false
   var artwork: String? = nil
   var artworkWidth: Double? = nil
   var artworkHeight: Double? = nil
@@ -140,7 +141,7 @@ enum TCInputCatalog {
     for (name, base) in [("GC Main stick",10),("GC C stick",15),("Nunchuk stick",202),("Classic Left stick",313),("Classic Right stick",318)] {
       result.append(TCInputChoice(name:name, inputs:(base+1...base+4).map { TCInput(code:$0,axis:true) }, kind:.joystick))
     }
-    result += [TCInputChoice(name:"Wheel steering stick",inputs:[],kind:.wheelJoystick), TCInputChoice(name:"Gesture target / Lock",inputs:[],kind:.target)]
+    result += [TCInputChoice(name:"Wheel steering stick",inputs:[],kind:.wheelJoystick), TCInputChoice(name:"Gesture target / Lock",inputs:[],kind:.target),TCInputChoice(name:"Wheel / Stick",inputs:[],kind:.mode),TCInputChoice(name:"Center",inputs:[],kind:.recenter)]
     return result
   }
   // Screen Up, Down, Left, Right. Matches existing Mario Kart item Up -> raw Left (109).

@@ -87,6 +87,7 @@ final class TCGestureEngine {
   func reset() { contacts.removeAll(); locked.removeAll(); pulses.removeAll(); publish() }
   private func values(_ c: TCControl, _ t: Contact) -> [(TCInput,Float)] {
     if t.replaced || c.tapOnly { return [] }
+    if c.releaseOutside && !c.frame.contains(t.x,t.y,canvasWidth:width,canvasHeight:height) { return [] }
     let dx = t.x-c.frame.x*width, dy = t.y-c.frame.y*height
     switch c.kind {
     case .dpad:
