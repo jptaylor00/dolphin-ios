@@ -118,9 +118,12 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     canvas.layout = preset.layouts[layoutIndex]
     canvas.changed = { [weak self] layout in guard let self = self else { return }; self.preset.layouts[self.layoutIndex] = layout }
     view.addSubview(canvas)
+    let toolsGesture = UITapGestureRecognizer(target:self,action:#selector(toggleTools))
+    toolsGesture.numberOfTouchesRequired = 2
+    view.addGestureRecognizer(toolsGesture)
     toolbar.backgroundColor = UIColor(white:0.12,alpha:0.96)
     view.addSubview(toolbar)
-    let items:[(String,Selector)] = [("Cancel",#selector(cancel)),("Save & Play",#selector(save)),("Presets",#selector(presets)),("Add",#selector(addControl)),("Properties",#selector(properties)),("Gestures",#selector(gestures)),("Motion",#selector(motion)),("Wheel / Stick",#selector(switchLayout))]
+    let items:[(String,Selector)] = [("Cancel",#selector(cancel)),("Save & Play",#selector(save)),("Presets",#selector(presets)),("Add",#selector(addControl)),("Properties",#selector(properties)),("Gestures",#selector(gestures)),("Motion",#selector(motion)),("Wheel / Stick",#selector(switchLayout)),("Hide Tools",#selector(toggleTools))]
     var x:CGFloat = 8
     for (title,action) in items {
       let button = UIButton(type:.system); button.setTitle(title,for:.normal)
@@ -172,6 +175,10 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
       self.preset.name = name
       do { try TCPresetStore.shared.save(self.preset); self.finish(self.preset) } catch { self.error(error) }
     }
+  }
+  @objc private func toggleTools() {
+    toolbar.isHidden.toggle()
+    status.isHidden = toolbar.isHidden
   }
   @objc private func switchLayout() {
     guard preset.layouts.count == 2 else { return }
