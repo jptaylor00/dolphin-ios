@@ -30,6 +30,13 @@ import Foundation
     }
     wheelMode = enabled
     wheelLock.unlock()
+    // Release Mario Kart-only simulated tilt immediately when switching away.
+    if !enabled {
+      TCManagerInterface.setAxisValueFor(
+        TCButtonType.wiiTiltLeft.rawValue, controller: port, value: 0)
+      TCManagerInterface.setAxisValueFor(
+        TCButtonType.wiiTiltRight.rawValue, controller: port, value: 0)
+    }
   }
 
   @objc func recenterMarioKartWheelSteering() {
@@ -97,7 +104,7 @@ import Foundation
           relativeAngle = min(0.85, max(-0.85, relativeAngle))
           customWheelAngle = relativeAngle * (self.wheelInvert ? -1.0 : 1.0)
         } else {
-          customWheelAngle = 0
+          customWheelAngle = 0 // no direction; do not latch previous steering
         }
       }
       self.wheelLock.unlock()
@@ -119,23 +126,22 @@ import Foundation
         return
       }
 
+      // Mario Kart uses Dolphin's built-in Tilt simulation instead of
+      // replacing the physical acceleration vector. This has a known, exact
+      // neutral gravity reference; the previous synthesized +X gravity
+      // forced a left turn even with steering centered.
       if let angle = customWheelAngle {
-        // A Wii Wheel is held sideways with its face toward the player.
-        // At neutral, gravity is in the controller's face plane, not the
-        // face-up +Z direction. Turning the phone rotates gravity in X/Y,
-        // which is how Mario Kart detects steering from an accelerometer.
-        // Dolphin's Sideways Wii Remote option handles the 90-degree rotation.
-        x = -cos(angle)
-        y = sin(angle)
-        z = 0
+        // TCButtonType.wiiTiltLeft / Right are a signed complementary pair:
+        // Tilt/Right - Tilt/Left = 2 * supplied axis.
+        let normalized = Float(max(-1.0, min(1.0, angle / 0.85))) * 0.5
+        TCManagerInterface.setAxisValueFor(
+          TCButtonType.wiiTiltLeft.rawValue, controller: self.port, value: normalized)
+        TCManagerInterface.setAxisValueFor(
+          TCButtonType.wiiTiltRight.rawValue, controller: self.port, value: normalized)
       }
-      
-      // CMAccelerationData's units are G's
-      // Each Wii Remote IMU channel is mapped twice (positive/negative
-      // controls), and each pair is subtracted by Dolphin. With the signed
-      // input axes this doubles the measured value; compensate ONLY in the
-      // Mario Kart synthetic wheel path. Other games retain their inputs.
-      let gravity = customWheelAngle == nil ? -9.81 : -9.81 / 2.0
+
+      // Leave original phone-to-Wii motion processing untouched for all games.
+      let gravity = -9.81
       x *= gravity
       y *= gravity
       z *= gravity

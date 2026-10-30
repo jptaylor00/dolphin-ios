@@ -7,6 +7,7 @@
 
 #include <array>
 #include <string>
+#include <string_view>
 
 #import "Common/IOFile.h"
 
@@ -27,6 +28,7 @@
 #import "InputCommon/ControllerEmu/ControllerEmu.h"
 #import "InputCommon/ControllerEmu/Control/Control.h"
 #import "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
+#import "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 
 #import "VideoCommon/Present.h"
 
@@ -54,11 +56,13 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   NSInteger _sidewaysPreset;
 
   // Temporary Mario Kart-only input settings, restored when that preset ends.
-  // The built-in Touchscreen.ini has no Wii Remote IMU accelerometer mapping,
-  // and is imported only on first launch. Bind the CURRENT controller instead.
+  // Do not modify saved mappings or Super Mario Bros controls.
   BOOL _marioKartWheelInputConnected;
   std::array<std::string, 6> _previousMarioKartIMUBindings;
+  std::array<std::string, 2> _previousMarioKartTiltBindings;
   unsigned int _previousMarioKartExtension;
+  bool _previousMarioKartSidewaysValue;
+  std::string _previousMarioKartSidewaysExpression;
 }
 
 - (void)viewDidLoad {
@@ -457,35 +461,67 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 
   auto* wiimote = static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(0));
   auto* imu = wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer);
+  auto* tilt = wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Tilt);
+  auto* options = wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Options);
   auto* attachments = static_cast<ControllerEmu::Attachments*>(
       wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Attachments));
 
-  if (!imu || imu->controls.size() != 6 || !attachments)
+  if (!imu || imu->controls.size() != 6 || !tilt || tilt->controls.size() < 4 ||
+      !attachments || !options)
     return;
 
-  // Input order: Up, Down, Left, Right, Forward, Backward. These six
-  // controller axes already receive values from TCDeviceMotion, but had
-  // no Wii Remote IMU expressions in the installed touchscreen profile.
-  static constexpr const char* kWiiAccelExpressions[6] = {
-      "`Axis 629`", "`Axis 630`", "`Axis 625`",
-      "`Axis 626`", "`Axis 627`", "`Axis 628`"};
+  // Only touch the sideways setting used by this Wii Remote. Preserve any
+  // user-defined expression so leaving Mario Kart returns to EXACT settings.
+  ControllerEmu::NumericSetting<bool>* sideways = nullptr;
+  for (auto& setting : options->numeric_settings) {
+    if (std::string_view(setting->GetININame()) == WiimoteEmu::Wiimote::SIDEWAYS_OPTION) {
+      sideways = static_cast<ControllerEmu::NumericSetting<bool>*>(setting.get());
+      break;
+    }
+  }
+  if (!sideways)
+    return;
 
   const auto lock = ControllerEmu::EmulatedController::GetStateLock();
   if (enabled) {
     _previousMarioKartExtension = attachments->GetSelectedAttachment();
-    // Mario Kart's Wii Wheel uses a sideways remote with NO Nunchuk; if
-    // Nunchuk remains attached, Mario Kart instead expects stick steering.
+    _previousMarioKartSidewaysValue = sideways->GetValue();
+    _previousMarioKartSidewaysExpression =
+        sideways->GetInputReference().GetExpression();
+
+    // Wii Wheel steering requires a sideways remote with no extension.
     attachments->SetSelectedAttachment(WiimoteEmu::ExtensionNumber::NONE);
+    sideways->SetValue(true);
   } else {
     attachments->SetSelectedAttachment(_previousMarioKartExtension);
+    sideways->SetValue(_previousMarioKartSidewaysValue);
+    if (!_previousMarioKartSidewaysExpression.empty()) {
+      auto* reference = &sideways->GetInputReference();
+      reference->SetExpression(_previousMarioKartSidewaysExpression);
+      wiimote->UpdateSingleControlReference(g_controller_interface, reference);
+    }
   }
 
+  // Remove IMU overrides while using synthetic tilt. With no IMU input bound,
+  // Dolphin supplies default neutral gravity and uses its own Tilt simulation.
   for (size_t i = 0; i != imu->controls.size(); ++i) {
-    auto* reference = imu->controls[i]->control_ref.get();
+    auto* ref = imu->controls[i]->control_ref.get();
     if (enabled)
-      _previousMarioKartIMUBindings[i] = reference->GetExpression();
-    reference->SetExpression(enabled ? kWiiAccelExpressions[i] : _previousMarioKartIMUBindings[i]);
-    wiimote->UpdateSingleControlReference(g_controller_interface, reference);
+      _previousMarioKartIMUBindings[i] = ref->GetExpression();
+    ref->SetExpression(enabled ? "" : _previousMarioKartIMUBindings[i]);
+    wiimote->UpdateSingleControlReference(g_controller_interface, ref);
+  }
+
+  // Force ONLY Mario Kart's motion-simulation left/right controls to
+  // the two touchscreen axes driven by TCDeviceMotion. All other layouts
+  // regain their original bindings when this preset is no longer visible.
+  static constexpr const char* kWheelTiltAxes[2] = {"`Axis 129`", "`Axis 130`"};
+  for (size_t i = 0; i != 2; ++i) {
+    auto* ref = tilt->controls[i + 2]->control_ref.get(); // Left, Right
+    if (enabled)
+      _previousMarioKartTiltBindings[i] = ref->GetExpression();
+    ref->SetExpression(enabled ? kWheelTiltAxes[i] : _previousMarioKartTiltBindings[i]);
+    wiimote->UpdateSingleControlReference(g_controller_interface, ref);
   }
   _marioKartWheelInputConnected = enabled;
 }
