@@ -273,12 +273,6 @@ class TCSidewaysWiiPad: TCWiiPad {
         TCDeviceMotion.shared.triggerMarioKartShake()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
       }, for: .touchDown)
-      let layer = UIView(frame: canvas.bounds)
-      layer.backgroundColor = .clear
-      layer.isUserInteractionEnabled = false
-      layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-      shake.isUserInteractionEnabled = true
-      canvas.addSubview(layer)
       canvas.addSubview(shake)
       overlay = shake
       return
