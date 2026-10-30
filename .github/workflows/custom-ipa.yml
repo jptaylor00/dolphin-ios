@@ -2,7 +2,7 @@ name: Build customized DolphiniOS
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [master, fix/mario-kart-dpad-ccw]
     paths:
       - 'Source/iOS/App/DolphiniOS/UI/Emulation/TouchController/**'
       - 'Source/iOS/App/DolphiniOS/UI/Emulation/EmulationiOSViewController.mm'
