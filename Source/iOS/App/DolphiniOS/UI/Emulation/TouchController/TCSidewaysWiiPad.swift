@@ -6,7 +6,13 @@ import UIKit
 
 // A single continuous touch surface for Mario Kart's accelerate -> lock slide.
 // Neither a separate button nor a pan recognizer can steal the moving finger.
-private final class TCGasLockControl: UIView {
+private final class TCGasLockControl: UIView, TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl] {
+    let gasFrame = twoImage.convert(twoImage.bounds,to:canvas)
+    let lockFrame = lockLabel.convert(lockLabel.bounds,to:canvas)
+    return [TCControl(name:"Wii 2",frame:TCView.captureFrame(gasFrame,in:canvas),inputs:[TCInput(code:106)],artwork:"wiimote_two"),
+      TCControl(name:"Lock",kind:.target,frame:TCView.captureFrame(lockFrame,in:canvas))]
+  }
   var port: Int = 0
   private var locked = false
   private var trackingTwo = false
@@ -113,7 +119,10 @@ private final class TCGasLockControl: UIView {
 }
 
 
-private final class TCKartSteeringJoystick: UIView {
+private final class TCKartSteeringJoystick: UIView, TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl] {
+    [TCControl(name:"Steer",kind:.wheelJoystick,frame:TCView.captureFrame(convert(bounds,to:canvas),in:canvas),artwork:"gcwii_joystick_range")]
+  }
   var port: Int = 4
   private let base = UIView()
   private let thumb = UIView()
@@ -167,7 +176,10 @@ private final class TCKartSteeringJoystick: UIView {
 }
 
 // Allows one sustained finger from B to the D-pad's up arrow while drifting.
-private final class TCKartDriftThrow: UIView {
+private final class TCKartDriftThrow: UIView, TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl] {
+    [TCControl(name:"Wii B",frame:TCView.captureFrame(convert(bounds,to:canvas),in:canvas),inputs:[TCInput(code:101)],artwork:"wiimote_b",artworkWidth:image.image.map { Double($0.size.width) },artworkHeight:image.image.map { Double($0.size.height) })]
+  }
   var port: Int = 4
   var upwardTarget = CGRect.zero
   private var throwing = false
@@ -215,17 +227,39 @@ private final class TCKartDriftThrow: UIView {
 class TCSidewaysWiiPad: TCWiiPad {
   private var preset = 0
   private var joystickMode = false
-  @objc var marioKartJoystickMode: Bool { joystickMode }
+  @objc var marioKartJoystickMode: Bool {
+    guard let custom = customPreset, custom.layouts.indices.contains(customLayoutIndex) else { return joystickMode }
+    return custom.layouts[customLayoutIndex].controls.contains { $0.kind == .wheelJoystick }
+  }
+  @objc var selectedNativePreset:Int { preset }
+  override var editorContext: String { "Sideways-\(preset)" }
+  override func editorDefaultLayouts() -> [TCLayout] {
+    guard preset == 2 else { return super.editorDefaultLayouts() }
+    let previous = joystickMode
+    releaseInputs()
+    joystickMode = false; rebuildOverlay()
+    let wheel = captureLayout("Wheel")
+    joystickMode = true; rebuildOverlay()
+    let stick = captureLayout("Joystick")
+    joystickMode = previous; rebuildOverlay()
+    return [wheel,stick]
+  }
+  override func releaseControllerInputs() {
+    releaseInputs()
+    super.releaseControllerInputs()
+  }
   private var overlay: UIView?
   private var gasControl: TCGasLockControl?
   private var lastLayoutSize: CGSize = .zero
 
   @objc func setPreset(_ value: Int) {
-    guard preset != value else { return }
+    guard preset != value || customPreset != nil else { return }
+    applyCustomPreset(nil,notify:false)
     releaseInputs()
     if value != 2 { joystickMode = false }
     preset = value
     rebuildOverlay()
+    NotificationCenter.default.post(name:Notification.Name("DOLMarioKartSteeringModeDidChange"),object:self)
   }
 
   override func layoutSubviews() {
@@ -256,7 +290,27 @@ class TCSidewaysWiiPad: TCWiiPad {
     for view in canvas.subviews {
       view.isHidden = preset == 2
     }
-    guard preset == 2 else { return }
+    if preset != 2 {
+      // Keep the original Super Mario Bros 1/2 buttons and their 43pt size.
+      // Add an independent shake control without replacing the nib controls.
+      let shake = UIButton(type: .system)
+      shake.frame = CGRect(x: canvas.bounds.width - 95,
+                           y: max(0, canvas.bounds.height - 143),
+                           width: 76, height: 32)
+      shake.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
+      shake.setTitle("SHAKE", for: .normal)
+      shake.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
+      shake.setTitleColor(.white, for: .normal)
+      shake.backgroundColor = UIColor(white: 0.24, alpha: 0.85)
+      shake.layer.cornerRadius = 9
+      shake.addAction(UIAction { _ in
+        TCDeviceMotion.shared.triggerMarioKartShake()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+      }, for: .touchDown)
+      canvas.addSubview(shake)
+      overlay = shake
+      return
+    }
 
     let layer = UIView(frame: canvas.bounds)
     layer.backgroundColor = .clear
@@ -282,6 +336,22 @@ class TCSidewaysWiiPad: TCWiiPad {
       b.addTarget(b, action: #selector(TCButton.buttonReleased),
                   for: [.touchUpOutside, .touchCancel])
       layer.addSubview(b)
+    }
+
+    // Mario Kart-only dedicated shake button, independent of physical shaking.
+    func shakeButton(x: CGFloat, y: CGFloat) {
+      let shake = UIButton(type: .system)
+      shake.frame = CGRect(x: x, y: y, width: 76, height: 32)
+      shake.setTitle("SHAKE", for: .normal)
+      shake.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
+      shake.setTitleColor(.white, for: .normal)
+      shake.backgroundColor = UIColor(white: 0.24, alpha: 0.85)
+      shake.layer.cornerRadius = 9
+      shake.addAction(UIAction { _ in
+        TCDeviceMotion.shared.triggerMarioKartShake()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+      }, for: .touchDown)
+      layer.addSubview(shake)
     }
 
     // Keep EVERY existing control at its original physical size in both modes.
@@ -311,6 +381,7 @@ class TCSidewaysWiiPad: TCWiiPad {
       drift.upwardTarget = CGRect(x: dpadFrame.midX - 22,
                                  y: dpadFrame.minY, width: 44, height: 34)
       layer.addSubview(drift)
+      shakeButton(x: w - 108, y: h - 270)
       let pad = TCDirectionalPad(frame: dpadFrame)
       pad.directionalPadType = 107
       pad.sidewaysWiiDPad = true
@@ -319,9 +390,11 @@ class TCSidewaysWiiPad: TCWiiPad {
       pad.sharedInit()
     } else {
       button(101, x: 24, y: h - 132.5, width: 115.5, height: 115.5, imageScale: 1.5)
-      button(103, x: 24, y: h - 165.5, width: 26, height: 26)
-      button(102, x: 53, y: h - 165.5, width: 26, height: 26)
-      button(100, x: 83, y: h - 181.5, width: 43, height: 43)
+      // Move the three small controls to upper-left to clear space above B.
+      button(103, x: 18, y: 12, width: 26, height: 26)
+      button(102, x: 47, y: 12, width: 26, height: 26)
+      button(100, x: 78, y: 4, width: 43, height: 43)
+      shakeButton(x: 43, y: h - 174)
 
       let pad = TCDirectionalPad(frame: CGRect(x: w - 111, y: h - 218,
                                                width: 99, height: 99))
@@ -374,3 +447,6 @@ class TCSidewaysWiiPad: TCWiiPad {
     layer.addSubview(mode)
   }
 }
+
+
+

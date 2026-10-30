@@ -45,7 +45,7 @@ class TCButton: UIButton
   {
     self.setTitle("", for: .normal)
     self.addTarget(self, action: #selector(buttonPressed), for: .touchDown)
-    self.addTarget(self, action: #selector(buttonReleased), for: .touchUpInside)
+    self.addTarget(self, action: #selector(buttonReleased), for: [.touchUpInside, .touchUpOutside, .touchCancel])
     
     // TODO: Setting for hapic touch analog triggers enabled
     self.useHapicTouch = self.traitCollection.forceTouchCapability == .available
@@ -182,3 +182,4 @@ class TCButton: UIButton
   }
   
 }
+

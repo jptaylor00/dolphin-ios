@@ -107,9 +107,12 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(receiveRequestRenderWindowSizeNotificationiOS) name:DOLHostRequestRenderWindowSizeNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(receiveEmulationEndNotificationiOS) name:DOLEmulationDidEndNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(marioKartModeChanged:) name:@"DOLMarioKartSteeringModeDidChange" object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(controllerConfigurationsChanged:) name:@"DOLControllerConfigurationsDidChange" object:nil];
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
+  for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+  [[TCDeviceMotion shared] setMarioKartJoystickMode:NO];
   [self setMarioKartWheelInputConnected:NO];
   [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
   [TCManagerInterface setButtonStateFor:118 controller:4 state:NO];
@@ -119,9 +122,17 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   [[NSNotificationCenter defaultCenter] removeObserver:self name:DOLHostRequestRenderWindowSizeNotification object:nil];
   [[NSNotificationCenter defaultCenter] removeObserver:self name:DOLEmulationDidEndNotification object:nil];
   [[NSNotificationCenter defaultCenter] removeObserver:self name:@"DOLMarioKartSteeringModeDidChange" object:nil];
+  [[NSNotificationCenter defaultCenter] removeObserver:self name:@"DOLControllerConfigurationsDidChange" object:nil];
+}
+
+- (void)controllerConfigurationsChanged:(NSNotification*)notification {
+  [self recreateMenu];
 }
 
 - (void)marioKartModeChanged:(NSNotification*)notification {
+  if ([notification.object isKindOfClass:[TCSidewaysWiiPad class]]) {
+    _sidewaysPreset = ((TCSidewaysWiiPad*)notification.object).selectedNativePreset;
+  }
   [self updateVisibleTouchPadWithType:DOLEmulationVisibleTouchPadSidewaysWiimote];
   [self recreateMenu];
 }
@@ -156,6 +167,13 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   if (wiimoteTouchPadAttached) {
     NSArray<NSString*>* names = @[@"Sideways Wii Remote", @"Super Mario Bros Configuration", @"Mario Kart Configuration"];
     NSMutableArray<UIMenuElement*>* layouts = [NSMutableArray array];
+    TCSidewaysWiiPad* sidewaysPad = nil;
+    for (TCView* pad in self.touchPads) {
+      if ([pad isKindOfClass:[TCSidewaysWiiPad class]]) {
+        sidewaysPad = (TCSidewaysWiiPad*)pad;
+        break;
+      }
+    }
     for (NSInteger index = 0; index < names.count; ++index) {
       NSInteger selected = index;
       UIAction* action = [UIAction actionWithTitle:names[index] image:nil identifier:nil handler:^(UIAction*) {
@@ -170,8 +188,12 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
         [self recreateMenu];
         [self.navigationController setNavigationBarHidden:true animated:true];
       }];
-      action.state = (_sidewaysPreset == index) ? UIMenuElementStateOn : UIMenuElementStateOff;
+      action.state = (_sidewaysPreset == index && sidewaysPad.activeControllerConfigurationID == nil) ? UIMenuElementStateOn : UIMenuElementStateOff;
       [layouts addObject:action];
+    }
+    if (sidewaysPad) {
+      NSString* gameID = [NSString stringWithUTF8String:SConfig::GetInstance().GetGameID().c_str()];
+      [layouts addObjectsFromArray:[sidewaysPad controllerConfigurationActionsFrom:self gameID:gameID]];
     }
     [controllerActions addObject:[UIMenu menuWithTitle:@"Sideways Controller Layout" image:nil identifier:nil options:0 children:layouts]];
 
@@ -258,6 +280,26 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 
   UIMenu* visibleControllerMenu = [UIMenu menuWithTitle:@"Touch Controller" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:visibleControllerActions];
   [controllerActions addObject:visibleControllerMenu];
+
+  if (_visibleTouchPad != DOLEmulationVisibleTouchPadNone) {
+    NSInteger activeIndex = _visibleTouchPad - 1;
+    if (activeIndex >= 0 && activeIndex < self.touchPads.count) {
+      TCView* activePad = self.touchPads[activeIndex];
+      if (![activePad isKindOfClass:[TCSidewaysWiiPad class]]) {
+        NSString* gameID = [NSString stringWithUTF8String:SConfig::GetInstance().GetGameID().c_str()];
+        [controllerActions addObject:[UIMenu menuWithTitle:@"Controller Configurations" children:[activePad controllerConfigurationActionsFrom:self gameID:gameID]]];
+      }
+    }
+    [controllerActions addObject:[UIAction actionWithTitle:@"Controller Editor / Presets"
+      image:[UIImage systemImageNamed:@"slider.horizontal.3"] identifier:nil handler:^(UIAction*) {
+      NSInteger index = self->_visibleTouchPad - 1;
+      if (index >= 0 && index < self.touchPads.count) {
+        TCView* pad = self.touchPads[index];
+        NSString* gameID = [NSString stringWithUTF8String:SConfig::GetInstance().GetGameID().c_str()];
+        [pad presentControllerEditorFrom:self gameID:gameID];
+      }
+    }]];
+  }
 
   if (wiimoteTouchPadAttached) {
     TCWiiTouchIRMode irMode = (TCWiiTouchIRMode)Config::Get(Config::MAIN_TOUCH_PAD_IR_MODE);
@@ -589,6 +631,8 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     [motion setMotionEnabled:false];
   }
 
+  for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+
   NSInteger targetIdx = touchPad - 1;
 
   for (int i = 0; i < [self.touchPads count]; i++) {
@@ -653,7 +697,12 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     });
   }
 
-  [[TCDeviceMotion shared] setMotionEnabled:false];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+    [[TCDeviceMotion shared] setMarioKartJoystickMode:NO];
+    [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
+    [[TCDeviceMotion shared] setMotionEnabled:false];
+  });
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
@@ -692,3 +741,5 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 }
 
 @end
+
+

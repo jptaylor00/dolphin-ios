@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E02000000000000000000005 /* TCEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01000000000000000000005 /* TCEditorViewController.swift */; };
+		E02000000000000000000004 /* TCControllerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01000000000000000000004 /* TCControllerSession.swift */; };
+		E02000000000000000000003 /* TCLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01000000000000000000003 /* TCLayoutView.swift */; };
+		E02000000000000000000002 /* TCGestureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01000000000000000000002 /* TCGestureEngine.swift */; };
+		E02000000000000000000001 /* TCPresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01000000000000000000001 /* TCPresetStore.swift */; };
+		E02000000000000000000000 /* TCPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01000000000000000000000 /* TCPreset.swift */; };
 		B900A7A127F255EF000361DD /* libdolphin.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = B9476B2427F23FFE009C0A4B /* libdolphin.dylib */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		B900A7A727F26F61000361DD /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B900A7A627F26F61000361DD /* AppDelegate.swift */; };
 		B900A7AE27F27F36000361DD /* DolphinCoreService.mm in Sources */ = {isa = PBXBuildFile; fileRef = B900A7AD27F27F36000361DD /* DolphinCoreService.mm */; };
@@ -223,6 +229,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E01000000000000000000005 /* TCEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor/TCEditorViewController.swift; sourceTree = "<group>"; };
+		E01000000000000000000004 /* TCControllerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor/TCControllerSession.swift; sourceTree = "<group>"; };
+		E01000000000000000000003 /* TCLayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor/TCLayoutView.swift; sourceTree = "<group>"; };
+		E01000000000000000000002 /* TCGestureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor/TCGestureEngine.swift; sourceTree = "<group>"; };
+		E01000000000000000000001 /* TCPresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor/TCPresetStore.swift; sourceTree = "<group>"; };
+		E01000000000000000000000 /* TCPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor/TCPreset.swift; sourceTree = "<group>"; };
 		B900A7A227F25718000361DD /* Common.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Common.xcconfig; sourceTree = "<group>"; };
 		B900A7A627F26F61000361DD /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B900A7AC27F27F36000361DD /* DolphinCoreService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DolphinCoreService.h; sourceTree = "<group>"; };
@@ -1584,6 +1596,12 @@
 				B9B2C61F288DB62D00CB6569 /* TCWiiPad.xib */,
 				B9EC28392D21DA56000FAE09 /* TCWiiTouchIRMode.swift */,
 				B9447B062841906000BC9110 /* TCView.swift */,
+				E01000000000000000000005 /* TCEditorViewController.swift */,
+				E01000000000000000000004 /* TCControllerSession.swift */,
+				E01000000000000000000003 /* TCLayoutView.swift */,
+				E01000000000000000000002 /* TCGestureEngine.swift */,
+				E01000000000000000000001 /* TCPresetStore.swift */,
+				E01000000000000000000000 /* TCPreset.swift */,
 			);
 			path = TouchController;
 			sourceTree = "<group>";
@@ -2107,6 +2125,12 @@
 				B9FCB7BC289672830020E233 /* JitManager+Debugger.m in Sources */,
 				B9398724287FFBEC008E8E47 /* ConfigSoundViewController.mm in Sources */,
 				B9447B072841906000BC9110 /* TCView.swift in Sources */,
+				E02000000000000000000005 /* TCEditorViewController.swift in Sources */,
+				E02000000000000000000004 /* TCControllerSession.swift in Sources */,
+				E02000000000000000000003 /* TCLayoutView.swift in Sources */,
+				E02000000000000000000002 /* TCGestureEngine.swift in Sources */,
+				E02000000000000000000001 /* TCPresetStore.swift in Sources */,
+				E02000000000000000000000 /* TCPreset.swift in Sources */,
 				B9809C762A49F78700877579 /* GeckoCodeEditViewController.mm in Sources */,
 				B904AD1D2888AB6B008B6BE9 /* MappingDeviceViewController.mm in Sources */,
 				B904AD0C28886AE6008B6BE9 /* MappingRootDeviceCell.m in Sources */,

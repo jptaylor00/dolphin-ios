@@ -18,6 +18,7 @@ private extension Float {
   
   private var orientation: UIInterfaceOrientation = .portrait
   private var motionEnabled = false
+  var controllerMotionEnabled: Bool { motionEnabled }
   private var port = 0
 
   // Mario Kart Wii's Wii Wheel uses tilt, not the D-pad, for steering.
@@ -33,6 +34,11 @@ private extension Float {
   private var wheelInvert = true
   private var wheelSensitivity = 1.0
   private var joystickActive = false
+  private var phoneShakeEnabled = true
+  @objc var controllerPhoneShakeEnabled: Bool {
+    get { wheelLock.lock(); defer { wheelLock.unlock() }; return phoneShakeEnabled }
+    set { wheelLock.lock(); phoneShakeEnabled = newValue; wheelLock.unlock() }
+  }
   // Detect a short physical shake from the phone's acceleration magnitude.
   // A per-shake pulse is sent to Dolphin, not a continuously held button.
   private var lastPhoneShakeAt: TimeInterval = 0
@@ -40,17 +46,30 @@ private extension Float {
   private let phoneShakeThreshold = 2.25 // G, removes constant gravity and steering
   private let phoneShakeCooldown = 0.6
 
+  @objc func cancelControllerShake() { clearPhoneShake() }
+
   private func clearPhoneShake() {
     phoneShakeReleaseWork?.cancel()
     phoneShakeReleaseWork = nil
     for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
-      TCManagerInterface.setButtonStateFor(key.rawValue, controller: port, state: false)
+      TCInputRouter.set(port:port,source:"phone-shake",input:TCInput(code:key.rawValue),value:0)
     }
+  }
+
+  // On-screen Mario Kart SHAKE uses the same short pulse as physical phone shake.
+  func triggerMarioKartShake() {
+    clearPhoneShake()
+    for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+      TCInputRouter.set(port:port,source:"phone-shake",input:TCInput(code:key.rawValue),value:1)
+    }
+    let release = DispatchWorkItem { [weak self] in self?.clearPhoneShake() }
+    phoneShakeReleaseWork = release
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: release)
   }
 
   private func sendPhoneShakeIfNeeded(_ acceleration: CMAcceleration) {
     wheelLock.lock()
-    let active = wheelMode || joystickActive
+    let active = (wheelMode || joystickActive) && phoneShakeEnabled
     if !active { wheelLock.unlock(); return }
     // Gravity gives ~1G at rest. A genuine shake has short higher-G peaks.
     let g = sqrt(acceleration.x * acceleration.x +
@@ -61,9 +80,13 @@ private extension Float {
     wheelLock.unlock()
     guard trigger else { return }
     DispatchQueue.main.async {
+      self.wheelLock.lock()
+      let stillActive = (self.wheelMode || self.joystickActive) && self.phoneShakeEnabled
+      self.wheelLock.unlock()
+      guard stillActive, self.motionEnabled, UIApplication.shared.applicationState == .active else { return }
       self.clearPhoneShake()
       for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
-        TCManagerInterface.setButtonStateFor(key.rawValue, controller: self.port, state: true)
+        TCInputRouter.set(port:self.port,source:"phone-shake",input:TCInput(code:key.rawValue),value:1)
       }
       let release = DispatchWorkItem { [weak self] in self?.clearPhoneShake() }
       self.phoneShakeReleaseWork = release
@@ -82,7 +105,7 @@ private extension Float {
   }
   @objc func setMarioKartJoystickValue(_ value: Float) {
     wheelLock.lock()
-    if joystickActive { setWheelTilt(max(-0.5, min(0.5, value * 0.5))) }
+    if joystickActive { setWheelTilt(max(-1, min(1, value))) }
     wheelLock.unlock()
   }
 
@@ -90,10 +113,14 @@ private extension Float {
   // Core Motion's fused quaternion instead of accelerometer X/Y gravity.
   // This also works when the phone is nearly flat.
   private func setWheelTilt(_ value: Float) {
+    // Dolphin's directional axis inputs retain their signed direction.
+    // The left half of the stick must send a negative left-axis value;
+    // converting it to positive makes the left half read as neutral.
+    let tilt = TCInputCatalog.kartTilt(value)
     TCManagerInterface.setAxisValueFor(
-      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: value)
+      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: tilt.left)
     TCManagerInterface.setAxisValueFor(
-      TCButtonType.wiiTiltRight.rawValue, controller: port, value: value)
+      TCButtonType.wiiTiltRight.rawValue, controller: port, value: tilt.right)
   }
 
   private func startWheelAttitudeUpdatesIfNeeded() {
@@ -368,3 +395,5 @@ private extension Float {
     self.orientation = UIApplication.shared.statusBarOrientation
   }
 }
+
+

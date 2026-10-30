@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+import UIKit
+
+// Geometry capture reuses the original controls. Protected defaults never enter the new renderer.
+protocol TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl]
+}
+extension TCView {
+  static func captureFrame(_ rect:CGRect,in canvas:UIView) -> TCFrame {
+    TCFrame(x:Double(rect.midX/max(1,canvas.bounds.width)),y:Double(rect.midY/max(1,canvas.bounds.height)),
+            width:Double(rect.width),height:Double(rect.height))
+  }
+  func captureLayout(_ name:String) -> TCLayout {
+    guard let canvas = real_view else { return TCLayout(name:name,controls:[]) }
+    canvas.layoutIfNeeded()
+    var result: [TCControl] = []
+    func walk(_ parent:UIView) {
+      for view in parent.subviews where !view.isHidden {
+        let rect = view.convert(view.bounds,to:canvas)
+        let f = TCView.captureFrame(rect,in:canvas)
+        if let composite = view as? TCCompositeCapture { result += composite.captureControls(in:canvas) }
+        else if let b = view as? TCButton {
+          guard let type = TCButtonType(rawValue:b.controllerButton) else { continue }
+          let image = b.image(for:.normal)
+          result.append(TCControl(name:TCInputCatalog.names[b.controllerButton] ?? "Button",frame:f,
+            inputs:[TCInput(code:b.controllerButton,axis:b.isAxis)],releaseOutside:b.sidewaysSlideEnabled,artwork:type.getImageName(),
+            artworkWidth:image.map { Double($0.size.width * abs(b.transform.a)) },
+            artworkHeight:image.map { Double($0.size.height * abs(b.transform.d)) }))
+        } else if let pad = view as? TCDirectionalPad {
+          let codes = pad.sidewaysWiiDPad ? TCInputCatalog.sidewaysDirections : (pad.sidewaysJoystick ? [110,109,107,108].map { TCInput(code:$0) } :
+            (pad.directionalPadType...pad.directionalPadType+3).map { TCInput(code:$0) })
+          result.append(TCControl(name:"D-pad",kind:.dpad,frame:f,inputs:codes,artwork:pad.sidewaysJoystick ? "gcwii_joystick_range" : "gcwii_dpad"))
+        } else if let stick = view as? TCJoystick {
+          result.append(TCControl(name:"Stick",kind:.joystick,frame:f,
+            inputs:(stick.joystickType+1...stick.joystickType+4).map { TCInput(code:$0,axis:true) },artwork:"gcwii_joystick_range"))
+        } else if let b = view as? UIButton {
+          if b.currentTitle == "SHAKE" {
+            result.append(TCControl(name:"Shake",kind:.pulse,frame:f,inputs:[132,133,134].map { TCInput(code:$0) }))
+            continue
+          }
+          let isMode = b.currentTitle == "WHEEL" || b.currentTitle == "STICK"
+          if isMode || b.currentTitle == "Center" {
+            result.append(TCControl(name:b.currentTitle ?? "",kind:isMode ? .mode : .recenter,frame:f))
+          }
+        } else { walk(view) }
+      }
+    }
+    walk(canvas)
+    // IDs are stable within the captured layout and serialized along with gesture references.
+    var layout = TCLayout(name:name,controls:result)
+    if let gas = result.first(where: { $0.name == "Wii 2" }), let lock = result.first(where: { $0.kind == .target && $0.name.contains("Lock") }) {
+      layout.gestures += [TCGestureRule(source:gas.id,target:lock.id,action:.lock,inputs:gas.inputs),
+                         TCGestureRule(source:lock.id,target:gas.id,action:.unlock,inputs:gas.inputs)]
+    }
+    if self is TCSidewaysWiiPad, editorContext == "Sideways-2", let drift = result.first(where: { $0.name == "Wii B" }), let pad = result.first(where: { $0.kind == .dpad }) {
+      // A separate target matches the existing 44x34 item Up hit region.
+      var up = TCControl(name:"Item Up",kind:.target,frame:pad.frame,opacity:0.15)
+      up.frame.width = 44; up.frame.height = 34
+      up.frame.y -= (pad.frame.height/2-17)/Double(max(1,canvas.bounds.height))
+      up.inputs = Array(pad.inputs.prefix(1))
+      layout.controls.append(up)
+      layout.gestures.append(TCGestureRule(source:drift.id,target:up.id,action:.addWhileHolding,inputs:up.inputs))
+    }
+    if editorContext == "Sideways-0" || editorContext == "Sideways-1" {
+      let sliding = result.filter { $0.releaseOutside }
+      for source in sliding {
+        for target in sliding {
+          layout.gestures.append(TCGestureRule(source:source.id,target:target.id,action:.replace,inputs:target.inputs))
+        }
+      }
+    }
+    if editorContext == "Sideways-2", let shake = result.first(where: { $0.name == "Shake" }) {
+      if let gas = result.first(where: { $0.name == "Wii 2" }) {
+        layout.gestures.append(TCGestureRule(source:gas.id,target:shake.id,action:.pulse,inputs:shake.inputs))
+      }
+    }
+    return layout
+  }
+  @objc func presentControllerEditor(from presenter:UIViewController,gameID:String) {
+    releaseControllerInputs()
+    let editor = TCEditorViewController(pad:self,gameID:gameID)
+    editor.modalPresentationStyle = .fullScreen
+    presenter.present(editor,animated:true)
+  }
+  func applyCustomPreset(_ preset:TCPreset?,index:Int = 0,notify:Bool = true) {
+    releaseControllerInputs()
+    if preset != nil && legacyMotionSettings == nil {
+      legacyMotionSettings = TCMotionSettings(sensitivity:TCDeviceMotion.shared.marioKartSteeringSensitivity,
+        inverted:TCDeviceMotion.shared.marioKartSteeringInverted,phoneShake:TCDeviceMotion.shared.controllerPhoneShakeEnabled)
+    }
+    customLayoutView?.removeFromSuperview(); customLayoutView = nil
+    customPreset = preset
+    customLayoutIndex = index
+    real_view?.isHidden = preset != nil
+    if let preset = preset, preset.layouts.indices.contains(index) {
+      let layout = TCLayoutView(layout:preset.layouts[index],port:port)
+      layout.frame = bounds
+      layout.autoresizingMask = [.flexibleWidth,.flexibleHeight]
+      layout.command = { [weak self] kind in
+        guard let self = self else { return }
+        if kind == .recenter { TCDeviceMotion.shared.recenterMarioKartWheelSteering() }
+        if kind == .mode, preset.layouts.count == 2 {
+          self.applyCustomPreset(preset,index:1-self.customLayoutIndex)
+        }
+      }
+      customLayoutView = layout; addSubview(layout)
+      TCDeviceMotion.shared.marioKartSteeringSensitivity = preset.motion.sensitivity
+      TCDeviceMotion.shared.marioKartSteeringInverted = preset.motion.inverted
+      TCDeviceMotion.shared.controllerPhoneShakeEnabled = preset.motion.phoneShake
+    } else {
+      if let previous = legacyMotionSettings {
+        TCDeviceMotion.shared.marioKartSteeringSensitivity = previous.sensitivity
+        TCDeviceMotion.shared.marioKartSteeringInverted = previous.inverted
+        TCDeviceMotion.shared.controllerPhoneShakeEnabled = previous.phoneShake
+        legacyMotionSettings = nil
+      }
+    }
+    guard notify else { return }
+    if self is TCSidewaysWiiPad {
+      NotificationCenter.default.post(name:Notification.Name("DOLMarioKartSteeringModeDidChange"),object:self)
+    }
+    NotificationCenter.default.post(name:Notification.Name("DOLControllerConfigurationsDidChange"),object:self)
+  }
+}
+
+
+
+extension TCView {
+  @objc var activeControllerConfigurationID:String? { customPreset?.id }
+
+  func activateControllerConfiguration(_ preset:TCPreset,index:Int = 0) {
+    if let sideways = self as? TCSidewaysWiiPad, let nativeIndex = preset.sidewaysIndex {
+      sideways.setPreset(nativeIndex)
+    }
+    applyCustomPreset(preset,index:min(max(0,index),preset.layouts.count-1))
+  }
+
+  @objc func controllerConfigurationActions(from presenter:UIViewController,gameID:String) -> [UIMenuElement] {
+    var actions:[UIMenuElement] = []
+    do {
+      for preset in try TCPresetStore.shared.configurations(context:editorContext,gameID:gameID) {
+        let action = UIAction(title:preset.configurationTitle(gameID:gameID),image:UIImage(systemName:"gamecontroller")) { [weak self,weak presenter] _ in
+          self?.activateControllerConfiguration(preset)
+          presenter?.navigationController?.setNavigationBarHidden(true,animated:true)
+        }
+        action.state = customPreset?.id == preset.id ? .on : .off
+        actions.append(action)
+      }
+    } catch {
+      let failure = UIAction(title:"Unable to read saved configurations",handler:{ _ in })
+      failure.attributes = .disabled
+      actions.append(failure)
+    }
+    let add = UIAction(title:"Add Configuration…",image:UIImage(systemName:"plus")) { [weak self,weak presenter] _ in
+      guard let self = self, let presenter = presenter else { return }
+      self.presentConfigurationManager(from:presenter,gameID:gameID,create:true)
+    }
+    let manage = UIAction(title:"Manage Configurations…",image:UIImage(systemName:"folder")) { [weak self,weak presenter] _ in
+      guard let self = self, let presenter = presenter else { return }
+      self.presentConfigurationManager(from:presenter,gameID:gameID,create:false)
+    }
+    actions.append(UIMenu(title:"",options:.displayInline,children:[add,manage]))
+    return actions
+  }
+
+  private func presentConfigurationManager(from presenter:UIViewController,gameID:String,create:Bool) {
+    releaseControllerInputs()
+    let editor = TCEditorViewController(pad:self,gameID:gameID,entry:create ? .newConfiguration : .configurations)
+    editor.modalPresentationStyle = .fullScreen
+    presenter.present(editor,animated:true)
+  }
+}
