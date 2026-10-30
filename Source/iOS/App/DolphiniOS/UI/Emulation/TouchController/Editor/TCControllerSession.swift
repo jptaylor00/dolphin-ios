@@ -82,7 +82,7 @@ extension TCView {
     editor.modalPresentationStyle = .fullScreen
     presenter.present(editor,animated:true)
   }
-  func applyCustomPreset(_ preset:TCPreset?,index:Int = 0) {
+  func applyCustomPreset(_ preset:TCPreset?,index:Int = 0,notify:Bool = true) {
     releaseControllerInputs()
     if preset != nil && legacyMotionSettings == nil {
       legacyMotionSettings = TCMotionSettings(sensitivity:TCDeviceMotion.shared.marioKartSteeringSensitivity,
@@ -115,9 +115,58 @@ extension TCView {
         legacyMotionSettings = nil
       }
     }
+    guard notify else { return }
     if self is TCSidewaysWiiPad {
       NotificationCenter.default.post(name:Notification.Name("DOLMarioKartSteeringModeDidChange"),object:self)
     }
+    NotificationCenter.default.post(name:Notification.Name("DOLControllerConfigurationsDidChange"),object:self)
   }
 }
 
+
+
+extension TCView {
+  @objc var activeControllerConfigurationID:String? { customPreset?.id }
+
+  func activateControllerConfiguration(_ preset:TCPreset,index:Int = 0) {
+    if let sideways = self as? TCSidewaysWiiPad, let nativeIndex = preset.sidewaysIndex {
+      sideways.setPreset(nativeIndex)
+    }
+    applyCustomPreset(preset,index:min(max(0,index),preset.layouts.count-1))
+  }
+
+  @objc func controllerConfigurationActions(from presenter:UIViewController,gameID:String) -> [UIMenuElement] {
+    var actions:[UIMenuElement] = []
+    do {
+      for preset in try TCPresetStore.shared.configurations(context:editorContext,gameID:gameID) {
+        let action = UIAction(title:preset.configurationTitle(gameID:gameID),image:UIImage(systemName:"gamecontroller")) { [weak self,weak presenter] _ in
+          self?.activateControllerConfiguration(preset)
+          presenter?.navigationController?.setNavigationBarHidden(true,animated:true)
+        }
+        action.state = customPreset?.id == preset.id ? .on : .off
+        actions.append(action)
+      }
+    } catch {
+      let failure = UIAction(title:"Unable to read saved configurations",handler:{ _ in })
+      failure.attributes = .disabled
+      actions.append(failure)
+    }
+    let add = UIAction(title:"Add Configuration…",image:UIImage(systemName:"plus")) { [weak self,weak presenter] _ in
+      guard let self = self, let presenter = presenter else { return }
+      self.presentConfigurationManager(from:presenter,gameID:gameID,create:true)
+    }
+    let manage = UIAction(title:"Manage Configurations…",image:UIImage(systemName:"folder")) { [weak self,weak presenter] _ in
+      guard let self = self, let presenter = presenter else { return }
+      self.presentConfigurationManager(from:presenter,gameID:gameID,create:false)
+    }
+    actions.append(UIMenu(title:"",options:.displayInline,children:[add,manage]))
+    return actions
+  }
+
+  private func presentConfigurationManager(from presenter:UIViewController,gameID:String,create:Bool) {
+    releaseControllerInputs()
+    let editor = TCEditorViewController(pad:self,gameID:gameID,entry:create ? .newConfiguration : .configurations)
+    editor.modalPresentationStyle = .fullScreen
+    presenter.present(editor,animated:true)
+  }
+}

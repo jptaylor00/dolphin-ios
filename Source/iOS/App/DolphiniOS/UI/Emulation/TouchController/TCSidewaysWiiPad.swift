@@ -231,6 +231,7 @@ class TCSidewaysWiiPad: TCWiiPad {
     guard let custom = customPreset, custom.layouts.indices.contains(customLayoutIndex) else { return joystickMode }
     return custom.layouts[customLayoutIndex].controls.contains { $0.kind == .wheelJoystick }
   }
+  @objc var selectedNativePreset:Int { preset }
   override var editorContext: String { "Sideways-\(preset)" }
   override func editorDefaultLayouts() -> [TCLayout] {
     guard preset == 2 else { return super.editorDefaultLayouts() }
@@ -253,11 +254,12 @@ class TCSidewaysWiiPad: TCWiiPad {
 
   @objc func setPreset(_ value: Int) {
     guard preset != value || customPreset != nil else { return }
-    applyCustomPreset(nil)
+    applyCustomPreset(nil,notify:false)
     releaseInputs()
     if value != 2 { joystickMode = false }
     preset = value
     rebuildOverlay()
+    NotificationCenter.default.post(name:Notification.Name("DOLMarioKartSteeringModeDidChange"),object:self)
   }
 
   override func layoutSubviews() {
@@ -445,5 +447,6 @@ class TCSidewaysWiiPad: TCWiiPad {
     layer.addSubview(mode)
   }
 }
+
 
 

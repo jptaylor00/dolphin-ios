@@ -5,6 +5,9 @@ import UniformTypeIdentifiers
 private final class TCChoiceController: UITableViewController {
   let options:[String]
   let choose:(Int)->Void
+  var deleteFrom:Int?
+  var onDelete:((Int)->Void)?
+  var onAdd:(()->Void)?
   init(title:String,options:[String],choose:@escaping(Int)->Void) {
     self.options = options; self.choose = choose
     super.init(style:.plain); self.title = title
@@ -12,7 +15,16 @@ private final class TCChoiceController: UITableViewController {
   required init?(coder:NSCoder) { fatalError("init(coder:) has not been implemented") }
   override func viewDidLoad() {
     super.viewDidLoad()
-    navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem:.cancel,target:self,action:#selector(close))
+    navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem:.done,target:self,action:#selector(close))
+    if onAdd != nil { navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem:.add,target:self,action:#selector(add)) }
+  }
+  @objc private func add() { dismiss(animated:true) { self.onAdd?() } }
+  override func tableView(_ tableView:UITableView,canEditRowAt indexPath:IndexPath)->Bool {
+    guard let start = deleteFrom else { return false }
+    return indexPath.row >= start
+  }
+  override func tableView(_ tableView:UITableView,commit editingStyle:UITableViewCell.EditingStyle,forRowAt indexPath:IndexPath) {
+    if editingStyle == .delete { dismiss(animated:true) { self.onDelete?(indexPath.row) } }
   }
   @objc private func close() { dismiss(animated:true) }
   override func tableView(_ tableView:UITableView,numberOfRowsInSection section:Int)->Int { options.count }
@@ -28,7 +40,8 @@ private final class TCChoiceController: UITableViewController {
 
 private final class TCEditCanvas:UIView {
   var layout = TCLayout(name:"",controls:[]) { didSet { redraw() } }
-  var selected:String? { didSet { redraw() } }
+  var selected:String? { didSet { redraw(); selectionChanged?() } }
+  var selectionChanged:(()->Void)?
   var changed:((TCLayout)->Void)?
   private var start:CGPoint?
   private var original:TCControl?
@@ -85,6 +98,8 @@ private final class TCEditCanvas:UIView {
   override func touchesCancelled(_ touches:Set<UITouch>,with event:UIEvent?) { start = nil; original = nil }
 }
 
+enum TCEditorEntry: Equatable { case canvas, newConfiguration, configurations }
+
 final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   private let pad:TCView
   private let gameID:String
@@ -94,9 +109,12 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   private let canvas = TCEditCanvas()
   private let toolbar = UIScrollView()
   private let status = UILabel()
-  private let initial:TCPreset?
+  private var initial:TCPreset?
+  private let entry:TCEditorEntry
+  private var openedEntry = false
   private let motionWasEnabled:Bool
-  init(pad:TCView,gameID:String) {
+  init(pad:TCView,gameID:String,entry:TCEditorEntry = .canvas) {
+    self.entry = entry
     self.pad = pad; self.gameID = gameID
     motionWasEnabled = TCDeviceMotion.shared.controllerMotionEnabled
     initial = pad.customPreset
@@ -116,6 +134,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     canvas.frame = view.bounds; canvas.autoresizingMask = [.flexibleWidth,.flexibleHeight]
     canvas.alpha = max(0.05,pad.alpha)
     canvas.layout = preset.layouts[layoutIndex]
+    canvas.selectionChanged = { [weak self] in self?.updateStatus() }
     canvas.changed = { [weak self] layout in guard let self = self else { return }; self.preset.layouts[self.layoutIndex] = layout }
     view.addSubview(canvas)
     let toolsGesture = UITapGestureRecognizer(target:self,action:#selector(toggleTools))
@@ -123,7 +142,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     view.addGestureRecognizer(toolsGesture)
     toolbar.backgroundColor = UIColor(white:0.12,alpha:0.96)
     view.addSubview(toolbar)
-    let items:[(String,Selector)] = [("Cancel",#selector(cancel)),("Save & Play",#selector(save)),("Presets",#selector(presets)),("Add",#selector(addControl)),("Properties",#selector(properties)),("Gestures",#selector(gestures)),("Motion",#selector(motion)),("Wheel / Stick",#selector(switchLayout)),("Hide Tools",#selector(toggleTools))]
+    let items:[(String,Selector)] = [("Cancel",#selector(cancel)),("Save & Play",#selector(save)),("Configurations",#selector(presets)),("New Config",#selector(newConfiguration)),("Delete Config",#selector(deleteCurrentConfiguration)),("Add Control",#selector(addControl)),("Properties",#selector(properties)),("Gestures",#selector(gestures)),("Motion",#selector(motion)),("Wheel / Stick",#selector(switchLayout)),("Hide Tools",#selector(toggleTools))]
     var x:CGFloat = 8
     for (title,action) in items {
       let button = UIButton(type:.system); button.setTitle(title,for:.normal)
@@ -135,17 +154,26 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     status.textAlignment = .center; status.isUserInteractionEnabled = false
     view.addSubview(status); updateStatus()
   }
+  override func viewDidAppear(_ animated:Bool) {
+    super.viewDidAppear(animated)
+    guard !openedEntry else { return }
+    openedEntry = true
+    if entry == .newConfiguration { newConfiguration() }
+    if entry == .configurations { presets() }
+  }
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
     toolbar.frame = CGRect(x:view.safeAreaInsets.left,y:view.safeAreaInsets.top,width:view.bounds.width-view.safeAreaInsets.left-view.safeAreaInsets.right,height:44)
     status.frame = CGRect(x:0,y:toolbar.frame.maxY,width:view.bounds.width,height:24)
   }
   private func updateStatus() {
-    status.text = "EDIT MODE • \(preset.name) • \(preset.layouts[layoutIndex].name) • Drag a control; drag its yellow handle to resize"
+    let selected = selectedIndex().map { preset.layouts[layoutIndex].controls[$0].name }
+    status.text = "EDIT MODE • \(preset.name) • " + (selected.map { "Selected: \($0) · Properties / Gestures" } ?? "Tap a control or use Properties / Gestures to choose one")
   }
   private func refresh() { canvas.layout = preset.layouts[layoutIndex]; updateStatus() }
-  private func pick(_ title:String,_ options:[String],_ action:@escaping(Int)->Void) {
+  private func pick(_ title:String,_ options:[String],deleteFrom:Int? = nil,onDelete:((Int)->Void)? = nil,onAdd:(()->Void)? = nil,_ action:@escaping(Int)->Void) {
     let list = TCChoiceController(title:title,options:options,choose:action)
+    list.deleteFrom = deleteFrom; list.onDelete = onDelete; list.onAdd = onAdd
     let nav = UINavigationController(rootViewController:list)
     nav.modalPresentationStyle = .formSheet
     present(nav,animated:true)
@@ -163,18 +191,73 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
       if !value.isEmpty { done(String(value.prefix(100))) }
     }); present(alert,animated:true)
   }
-  private func finish(_ value:TCPreset?) {
+  private func finish(_ value:TCPreset?,editAgain:Bool = false) {
+    let host = presentingViewController
     dismiss(animated:true) {
-      self.pad.applyCustomPreset(value,index:self.layoutIndex)
+      if let value = value { self.pad.activateControllerConfiguration(value,index:self.layoutIndex) }
+      else { self.pad.applyCustomPreset(nil) }
       TCDeviceMotion.shared.setMotionEnabled(self.motionWasEnabled)
+      if editAgain, let host = host { self.pad.presentControllerEditor(from:host,gameID:self.gameID) }
     }
   }
   @objc private func cancel() { layoutIndex = min(pad.customLayoutIndex,(initial?.layouts.count ?? 1)-1); finish(initial) }
+  private func changedConfigurations() {
+    NotificationCenter.default.post(name:Notification.Name("DOLControllerConfigurationsDidChange"),object:pad)
+  }
   @objc private func save() {
-    text("Save Preset",value:preset.name) { name in
-      self.preset.name = name
-      do { try TCPresetStore.shared.save(self.preset); self.finish(self.preset) } catch { self.error(error) }
+    func commit(_ name:String) {
+      preset.name = name
+      do { try TCPresetStore.shared.save(preset); changedConfigurations(); finish(preset) }
+      catch { self.error(error) }
     }
+    do {
+      if try TCPresetStore.shared.all().contains(where: { $0.id == preset.id }) { commit(preset.name) }
+      else { text("Save Configuration",value:preset.name,done:commit) }
+    } catch { self.error(error) }
+  }
+  @objc private func newConfiguration() {
+    pick("Add Configuration",["Copy current controls","Copy protected default","Start empty"]) { choice in
+      let source:TCPreset
+      if choice == 0 { source = self.preset }
+      else if choice == 1 {
+        source = TCPreset(name:"New Configuration",context:self.pad.editorContext,gameID:self.gameID,layouts:self.defaults)
+      } else {
+        let layouts = self.pad.editorContext == "Sideways-2" ? [TCLayout(name:"Wheel",controls:[]),TCLayout(name:"Joystick",controls:[])] : [TCLayout(name:"Controls",controls:[])]
+        source = TCPreset(name:"New Configuration",context:self.pad.editorContext,gameID:self.gameID,layouts:layouts)
+      }
+      self.text("Name New Configuration",value:choice == 0 ? String(source.name.prefix(90)) + " Copy" : "New Configuration") { name in
+        do {
+          self.preset = try TCPresetStore.shared.duplicate(source,name:name,gameID:self.gameID)
+          self.layoutIndex = 0; self.canvas.selected = nil; self.refresh(); self.changedConfigurations()
+        } catch { self.error(error) }
+      }
+    }
+  }
+  @objc private func deleteCurrentConfiguration() {
+    do {
+      guard let saved = try TCPresetStore.shared.all().first(where: { $0.id == preset.id }) else {
+        let alert = UIAlertController(title:"No Saved Configuration Selected",message:"Open Configurations to select a saved configuration to delete. Protected defaults cannot be deleted.",preferredStyle:.alert)
+        alert.addAction(UIAlertAction(title:"Configurations",style:.default) { _ in self.presets() })
+        alert.addAction(UIAlertAction(title:"Cancel",style:.cancel)); present(alert,animated:true); return
+      }
+      deleteConfiguration(saved)
+    } catch { self.error(error) }
+  }
+  private func deleteConfiguration(_ saved:TCPreset) {
+    let alert = UIAlertController(title:"Delete \(saved.name)?",message:"This deletes only this saved configuration. Built-in configurations remain available.",preferredStyle:.alert)
+    alert.addAction(UIAlertAction(title:"Cancel",style:.cancel))
+    alert.addAction(UIAlertAction(title:"Delete",style:.destructive) { _ in
+      do {
+        try TCPresetStore.shared.delete(saved)
+        if self.initial?.id == saved.id { self.initial = nil }
+        if self.pad.customPreset?.id == saved.id { self.pad.applyCustomPreset(nil) }
+        if self.preset.id == saved.id {
+          self.preset = TCPreset(name:"My Configuration",context:self.pad.editorContext,gameID:self.gameID,layouts:self.defaults)
+          self.layoutIndex = 0; self.canvas.selected = nil; self.refresh()
+        }
+        self.changedConfigurations(); self.presets()
+      } catch { self.error(error) }
+    }); present(alert,animated:true)
   }
   @objc private func toggleTools() {
     toolbar.isHidden.toggle()
@@ -186,19 +269,16 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   }
   @objc private func presets() {
     do {
-      let saved = try TCPresetStore.shared.list(context:pad.editorContext,gameID:gameID)
-      pick("Presets",["Protected default — Play", "New copy of default", "New empty preset", "Import JSON from Files"] + saved.map { $0.name }) { index in
+      let saved = try TCPresetStore.shared.configurations(context:pad.editorContext,gameID:gameID)
+      let labels = saved.map { ($0.id == preset.id ? "✓ " : "") + $0.configurationTitle(gameID:gameID) }
+      pick("Configurations · swipe a saved row to delete",["Protected default — Play","Add Configuration…","Import JSON from Files"] + labels,
+        deleteFrom:3,onDelete:{ index in self.deleteConfiguration(saved[index-3]) },onAdd:{ self.newConfiguration() }) { index in
         if index == 0 { self.layoutIndex = 0; self.finish(nil) }
-        else if index == 1 {
-          self.preset = TCPreset(name:"Default Copy",context:self.pad.editorContext,gameID:self.gameID,layouts:self.defaults)
-          self.layoutIndex = 0; self.refresh()
-        } else if index == 2 {
-          self.preset = TCPreset(name:"New Controller",context:self.pad.editorContext,gameID:self.gameID,layouts:self.pad.editorContext == "Sideways-2" ? [TCLayout(name:"Wheel",controls:[]),TCLayout(name:"Joystick",controls:[])] : [TCLayout(name:"Controls",controls:[])])
-          self.layoutIndex = 0; self.refresh()
-        } else if index == 3 {
+        else if index == 1 { self.newConfiguration() }
+        else if index == 2 {
           let picker = UIDocumentPickerViewController(forOpeningContentTypes:[.json],asCopy:true)
           picker.delegate = self; self.present(picker,animated:true)
-        } else { self.presetActions(saved[index-4]) }
+        } else { self.presetActions(saved[index-3]) }
       }
     } catch { self.error(error) }
   }
@@ -206,14 +286,27 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     pick(saved.name,["Load & Play","Edit","Rename","Duplicate","Export JSON","Delete"]) { index in
       switch index {
       case 0: self.layoutIndex = 0; self.finish(saved)
-      case 1: self.preset = saved; self.layoutIndex = 0; self.refresh()
+      case 1:
+        self.layoutIndex = 0
+        if saved.context != self.pad.editorContext { self.finish(saved,editAgain:true) }
+        else { self.preset = saved; self.canvas.selected = nil; self.refresh() }
       case 2:
         self.text("Rename",value:saved.name) { name in var p = saved; p.name = name
-          do { try TCPresetStore.shared.save(p); if self.preset.id == p.id { self.preset = p; self.refresh() } } catch { self.error(error) }
+          do { try TCPresetStore.shared.save(p)
+            if self.preset.id == p.id { self.preset = p; self.refresh() }
+            if self.initial?.id == p.id { self.initial = p }
+            if self.pad.customPreset?.id == p.id { self.pad.customPreset = p }
+            self.changedConfigurations() } catch { self.error(error) }
         }
       case 3:
-        var p = saved; p.id = UUID().uuidString; p.name += " Copy"
-        do { try TCPresetStore.shared.save(p); self.preset = p; self.layoutIndex = 0; self.refresh() } catch { self.error(error) }
+        self.text("Duplicate Configuration",value:String(saved.name.prefix(90)) + " Copy") { name in
+          do {
+            let copy = try TCPresetStore.shared.duplicate(saved,name:name,gameID:self.gameID)
+            self.changedConfigurations(); self.layoutIndex = 0
+            if copy.context != self.pad.editorContext { self.finish(copy,editAgain:true) }
+            else { self.preset = copy; self.canvas.selected = nil; self.refresh() }
+          } catch { self.error(error) }
+        }
       case 4:
         do {
           let url = FileManager.default.temporaryDirectory.appendingPathComponent("Controller-\(saved.id).json")
@@ -223,12 +316,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
           share.popoverPresentationController?.sourceRect = self.toolbar.bounds
           self.present(share,animated:true)
         } catch { self.error(error) }
-      default:
-        let alert = UIAlertController(title:"Delete \(saved.name)?",message:"This deletes this user preset.",preferredStyle:.alert)
-        alert.addAction(UIAlertAction(title:"Cancel",style:.cancel))
-        alert.addAction(UIAlertAction(title:"Delete",style:.destructive) { _ in
-          do { try TCPresetStore.shared.delete(saved) } catch { self.error(error) }
-        }); self.present(alert,animated:true)
+      default: self.deleteConfiguration(saved)
       }
     }
   }
@@ -239,7 +327,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
       let size = try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0
       guard size <= 1_048_576 else { throw TCPresetError.invalid("Preset exceeds 1 MB") }
       preset = try TCPresetStore.shared.importPreset(Data(contentsOf:url),context:pad.editorContext,gameID:gameID)
-      layoutIndex = 0; refresh()
+      layoutIndex = 0; canvas.selected = nil; refresh(); changedConfigurations()
     } catch { self.error(error) }
   }
   @objc private func addControl() {
@@ -259,8 +347,20 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     }
   }
   private func selectedIndex()->Int? { preset.layouts[layoutIndex].controls.firstIndex { $0.id == canvas.selected } }
+  private func chooseControl(_ done:@escaping()->Void) {
+    let controls = preset.layouts[layoutIndex].controls
+    guard !controls.isEmpty else {
+      let alert = UIAlertController(title:"Add a Control First",message:"This configuration has no controls to edit.",preferredStyle:.alert)
+      alert.addAction(UIAlertAction(title:"Add Control",style:.default) { _ in self.addControl() })
+      alert.addAction(UIAlertAction(title:"Cancel",style:.cancel)); present(alert,animated:true); return
+    }
+    pick("Choose a Control",controls.map { $0.name }) { index in
+      self.canvas.selected = controls[index].id
+      done()
+    }
+  }
   @objc private func properties() {
-    guard let index = selectedIndex() else { return }
+    guard let index = selectedIndex() else { chooseControl { self.properties() }; return }
     let control = preset.layouts[layoutIndex].controls[index]
     pick(control.name,["Rename","Input mapping","Opacity","Haptics: \(control.haptic ? "On" : "Off")","Activation: \(control.tapOnly ? "Tap" : "Hold")","Remove control"]) { choice in
       switch choice {
@@ -286,7 +386,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     }
   }
   @objc private func gestures() {
-    guard let index = selectedIndex() else { return }
+    guard let index = selectedIndex() else { chooseControl { self.gestures() }; return }
     let source = preset.layouts[layoutIndex].controls[index]
     let rules = preset.layouts[layoutIndex].gestures.filter { $0.source == source.id }
     pick("\(source.name) — hold is automatic",["Add gesture"] + rules.map { "Remove \($0.action.rawValue)" }) { selected in
@@ -321,4 +421,5 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     }
   }
 }
+
 

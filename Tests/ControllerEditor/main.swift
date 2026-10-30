@@ -124,5 +124,31 @@ pulseEngine.expirePulses()
 check(pulseState == 0,"Captured Shake pulse expires while still held")
 pulseEngine.end(1)
 check(pulseState == 0,"Releasing Shake cannot retrigger the pulse")
+// A configuration saved from any sideways default is reachable beside both defaults.
+let catalogDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+defer { try? FileManager.default.removeItem(at:catalogDir) }
+let catalog = TCPresetStore(directory:catalogDir)
+var kartCopy = preset; kartCopy.id = UUID().uuidString; kartCopy.name = "Kart Custom"
+try catalog.save(kartCopy)
+var brosCopy = preset; brosCopy.id = UUID().uuidString; brosCopy.name = "Bros Custom"; brosCopy.context = "Sideways-1"; brosCopy.gameID = "SMNE01"
+try catalog.save(brosCopy)
+var gcCopy = preset; gcCopy.id = UUID().uuidString; gcCopy.name = "GC Custom"; gcCopy.context = "TCGameCubePad"
+try catalog.save(gcCopy)
+let fromBros = try catalog.configurations(context:"Sideways-1",gameID:"SMNE01")
+check(Set(fromBros.map { $0.id }) == Set([kartCopy.id,brosCopy.id]),"Shared menu includes both sideways families without GC configurations")
+check(fromBros.first?.id == brosCopy.id,"Running game's configurations are prioritized")
+check(try catalog.configurations(context:"Sideways-2",gameID:"RMCE01").first?.id == kartCopy.id,"Switching native layout retains access to saved configurations")
+check(try catalog.configurations(context:"TCGameCubePad",gameID:"RMCE01").map { $0.id } == [gcCopy.id],"GC menu exposes only compatible configurations")
+let duplicate = try catalog.duplicate(kartCopy,name:"My Racing Layout",gameID:"OTHER")
+check(duplicate.id != kartCopy.id && duplicate.layouts == kartCopy.layouts,"Add by copying creates independent identity with the same controls")
+check(duplicate.gameID == "OTHER","New copy associates with the current game")
+var renamed = duplicate; renamed.name = "Renamed Racing Layout"
+try catalog.save(renamed)
+check(try catalog.all().contains { $0.id == duplicate.id && $0.name == renamed.name },"Rename updates configuration without changing identity")
+try catalog.delete(renamed)
+check(!(try catalog.all().contains { $0.id == duplicate.id }),"Delete removes configuration from shared catalog")
+check(try catalog.all().contains { $0.id == kartCopy.id },"Deleting a copy preserves its source")
+check(TCPreset.sidewaysIndex(for:"Sideways-2") == 2 && TCPreset.sidewaysIndex(for:"Sideways-99") == nil,"Saved layout resolves only supported native contexts")
 print("Passed \(checks) controller model and input-state checks")
+
 
