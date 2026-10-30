@@ -34,6 +34,10 @@ extension TCView {
           result.append(TCControl(name:"Stick",kind:.joystick,frame:f,
             inputs:(stick.joystickType+1...stick.joystickType+4).map { TCInput(code:$0,axis:true) },artwork:"gcwii_joystick_range"))
         } else if let b = view as? UIButton {
+          if b.currentTitle == "SHAKE" {
+            result.append(TCControl(name:"Shake",kind:.pulse,frame:f,inputs:[132,133,134].map { TCInput(code:$0) }))
+            continue
+          }
           let isMode = b.currentTitle == "WHEEL" || b.currentTitle == "STICK"
           if isMode || b.currentTitle == "Center" {
             result.append(TCControl(name:b.currentTitle ?? "",kind:isMode ? .mode : .recenter,frame:f))
@@ -65,9 +69,7 @@ extension TCView {
         }
       }
     }
-    if editorContext == "Sideways-2" {
-      let shake = TCControl(name:"Shake",frame:TCFrame(x:0.5,y:0.5,width:64,height:44),inputs:[132,133,134].map { TCInput(code:$0) })
-      layout.controls.append(shake)
+    if editorContext == "Sideways-2", let shake = result.first(where: { $0.name == "Shake" }) {
       if let gas = result.first(where: { $0.name == "Wii 2" }) {
         layout.gestures.append(TCGestureRule(source:gas.id,target:shake.id,action:.pulse,inputs:shake.inputs))
       }
@@ -118,3 +120,4 @@ extension TCView {
     }
   }
 }
+

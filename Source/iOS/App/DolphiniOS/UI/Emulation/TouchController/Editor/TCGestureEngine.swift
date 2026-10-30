@@ -34,6 +34,7 @@ final class TCGestureEngine {
     guard !contacts.values.contains(where: { $0.source == control.id }) else { return }
     if control.kind == .mode || control.kind == .recenter { command(control.kind); return }
     contacts[id] = Contact(source:control.id,startX:x,startY:y,x:x,y:y)
+    if control.kind == .pulse { pulses[control.id] = control.inputs; pulseGeneration += 1 }
     if control.haptic { haptic() }
     publish()
   }
@@ -146,3 +147,4 @@ final class TCInputMixer {
     if next == 0 { sent.removeValue(forKey:input) } else { sent[input] = next }
   }
 }
+

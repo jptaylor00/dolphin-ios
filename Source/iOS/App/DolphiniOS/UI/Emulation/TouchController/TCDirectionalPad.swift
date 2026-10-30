@@ -204,9 +204,9 @@ class TCDirectionalPad: UIView
     // onscreen physical directions into Dolphin's rotated Wii input names.
     // Same direction convention as the SMB sideways joystick above.
     // Other D-pads (including the upright/Nunchuk pad) are left untouched.
-    let mappedPresses = sidewaysWiiDPad && directionalPadType == 107
-      ? [buttonPresses[3], buttonPresses[2], buttonPresses[0], buttonPresses[1]]
-      : buttonPresses
+    // Mario Kart: use the visible D-pad directions directly. This corrects
+    // the previous clockwise-offset mapping without rotating any UI views.
+    let mappedPresses = buttonPresses
     for (i, press) in mappedPresses.enumerated()
     {
       TCManagerInterface.setButtonStateFor(directionalPadType + i, controller: port, state: press)
@@ -214,4 +214,5 @@ class TCDirectionalPad: UIView
   }
   
 }
+
 

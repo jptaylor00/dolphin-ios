@@ -15,7 +15,7 @@ struct TCInput: Codable, Hashable {
   var code: Int
   var axis: Bool = false
 }
-enum TCControlKind: String, Codable { case button, dpad, joystick, wheelJoystick, target, mode, recenter }
+enum TCControlKind: String, Codable { case button, pulse, dpad, joystick, wheelJoystick, target, mode, recenter }
 struct TCControl: Codable, Equatable {
   var id: String = UUID().uuidString
   var name: String
@@ -133,18 +133,22 @@ enum TCInputCatalog {
   static let names: [Int: String] = [0:"GC A",1:"GC B",2:"GC Start",3:"GC X",4:"GC Y",5:"GC Z",6:"GC Up",7:"GC Down",8:"GC Left",9:"GC Right",20:"GC L",21:"GC R",100:"Wii A",101:"Wii B",102:"Wii −",103:"Wii +",104:"Wii Home",105:"Wii 1",106:"Wii 2",107:"Wii raw Up",108:"Wii raw Down",109:"Wii raw Left",110:"Wii raw Right",132:"Shake X",133:"Shake Y",134:"Shake Z",200:"Nunchuk C",201:"Nunchuk Z",300:"Classic A",301:"Classic B",302:"Classic X",303:"Classic Y",304:"Classic −",305:"Classic +",306:"Classic Home",307:"Classic ZL",308:"Classic ZR",309:"Classic Up",310:"Classic Down",311:"Classic Left",312:"Classic Right",323:"Classic L",324:"Classic R"]
   static var choices: [TCInputChoice] {
     var result = (buttonCodes + [20,21,323,324]).map { TCInputChoice(name: names[$0] ?? "Input \($0)", inputs: [TCInput(code: $0, axis:[20,21,323,324].contains($0))]) }
-    result += [TCInputChoice(name:"Shake", inputs:[132,133,134].map { TCInput(code:$0) })]
+    result += [TCInputChoice(name:"Shake", inputs:[132,133,134].map { TCInput(code:$0) },kind:.pulse)]
     for (name, base) in [("GC D-pad",6),("Wii D-pad (upright)",107),("Classic D-pad",309)] {
       result.append(TCInputChoice(name:name, inputs:(base...base+3).map { TCInput(code:$0) }, kind:.dpad))
     }
-    result.append(TCInputChoice(name:"Wii D-pad (sideways)", inputs:sidewaysDirections, kind:.dpad))
+    result.append(TCInputChoice(name:"Mario Kart D-pad (latest layout)", inputs:sidewaysDirections, kind:.dpad))
     for (name, base) in [("GC Main stick",10),("GC C stick",15),("Nunchuk stick",202),("Classic Left stick",313),("Classic Right stick",318)] {
       result.append(TCInputChoice(name:name, inputs:(base+1...base+4).map { TCInput(code:$0,axis:true) }, kind:.joystick))
     }
     result += [TCInputChoice(name:"Wheel steering stick",inputs:[],kind:.wheelJoystick), TCInputChoice(name:"Gesture target / Lock",inputs:[],kind:.target),TCInputChoice(name:"Wheel / Stick",inputs:[],kind:.mode),TCInputChoice(name:"Center",inputs:[],kind:.recenter)]
     return result
   }
-  // Screen Up, Down, Left, Right. Matches existing Mario Kart item Up -> raw Left (109).
-  // SMB keeps its original recognizer and opposite convention; it is not changed here.
-  static let sidewaysDirections = [109,110,108,107].map { TCInput(code:$0) }
+  // Preserve the direct visible-direction mapping from fix/mario-kart-dpad-ccw.
+  // Serialized user mappings remain explicit and are not rewritten on load.
+  static let sidewaysDirections = [107,108,109,110].map { TCInput(code:$0) }
+  static func kartTilt(_ value:Float) -> (left:Float,right:Float) {
+    let clamped = max(-1,min(1,value))
+    return (min(0,clamped),max(0,clamped))
+  }
 }

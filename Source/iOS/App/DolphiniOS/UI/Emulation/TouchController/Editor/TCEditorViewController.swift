@@ -239,7 +239,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     let choices = availableChoices
     pick("Add Control",choices.map { $0.name }) { index in
       let choice = choices[index]
-      let size:Double = choice.kind == .button || choice.kind == .target ? 64 : 110
+      let size:Double = [.button,.pulse,.target].contains(choice.kind) ? 64 : 110
       let control = TCControl(name:choice.name,kind:choice.kind,frame:TCFrame(x:0.5,y:0.45,width:size,height:size),inputs:choice.inputs)
       self.preset.layouts[self.layoutIndex].controls.append(control)
       self.canvas.selected = control.id; self.refresh()
@@ -291,7 +291,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
         let actions = TCGestureAction.allCases
         let labels = ["Hold first + activate second","Drag to replace first","Swipe to lock","Reverse swipe to unlock","Swipe to pulse (shake)","Tap on release"]
         self.pick("Action",labels) { action in
-          let choices = self.availableChoices.filter { $0.kind == .button }
+          let choices = self.availableChoices.filter { $0.kind == .button || $0.kind == .pulse }
           self.pick("Action input",choices.map { $0.name }) { mapping in
             self.pick("Action Haptic",["On","Off"]) { haptic in
               self.preset.layouts[self.layoutIndex].gestures.append(TCGestureRule(source:source.id,target:targets[target].id,
@@ -314,3 +314,4 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
     }
   }
 }
+

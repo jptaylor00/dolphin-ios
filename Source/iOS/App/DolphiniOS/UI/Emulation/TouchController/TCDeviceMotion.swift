@@ -56,6 +56,17 @@ private extension Float {
     }
   }
 
+  // On-screen Mario Kart SHAKE uses the same short pulse as physical phone shake.
+  func triggerMarioKartShake() {
+    clearPhoneShake()
+    for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+      TCInputRouter.set(port:port,source:"phone-shake",input:TCInput(code:key.rawValue),value:1)
+    }
+    let release = DispatchWorkItem { [weak self] in self?.clearPhoneShake() }
+    phoneShakeReleaseWork = release
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: release)
+  }
+
   private func sendPhoneShakeIfNeeded(_ acceleration: CMAcceleration) {
     wheelLock.lock()
     let active = (wheelMode || joystickActive) && phoneShakeEnabled
@@ -94,7 +105,7 @@ private extension Float {
   }
   @objc func setMarioKartJoystickValue(_ value: Float) {
     wheelLock.lock()
-    if joystickActive { setWheelTilt(max(-0.5, min(0.5, value * 0.5))) }
+    if joystickActive { setWheelTilt(max(-1, min(1, value))) }
     wheelLock.unlock()
   }
 
@@ -102,10 +113,14 @@ private extension Float {
   // Core Motion's fused quaternion instead of accelerometer X/Y gravity.
   // This also works when the phone is nearly flat.
   private func setWheelTilt(_ value: Float) {
+    // Dolphin's directional axis inputs retain their signed direction.
+    // The left half of the stick must send a negative left-axis value;
+    // converting it to positive makes the left half read as neutral.
+    let tilt = TCInputCatalog.kartTilt(value)
     TCManagerInterface.setAxisValueFor(
-      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: value)
+      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: tilt.left)
     TCManagerInterface.setAxisValueFor(
-      TCButtonType.wiiTiltRight.rawValue, controller: port, value: value)
+      TCButtonType.wiiTiltRight.rawValue, controller: port, value: tilt.right)
   }
 
   private func startWheelAttitudeUpdatesIfNeeded() {
@@ -380,4 +395,5 @@ private extension Float {
     self.orientation = UIApplication.shared.statusBarOrientation
   }
 }
+
 

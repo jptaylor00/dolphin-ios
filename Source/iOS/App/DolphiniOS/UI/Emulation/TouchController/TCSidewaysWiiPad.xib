@@ -101,7 +101,7 @@
                 <constraint firstItem="MHM-u3-cl2" firstAttribute="centerX" secondItem="y2u-kF-jgk" secondAttribute="centerX" id="3NL-0u-Hbj"/>
                 <constraint firstItem="z7T-WV-IEZ" firstAttribute="centerX" secondItem="MHM-u3-cl2" secondAttribute="centerX" id="6tG-z2-FwJ"/>
                 <constraint firstItem="9Bj-JA-tly" firstAttribute="centerY" secondItem="MHM-u3-cl2" secondAttribute="centerY" id="96c-xC-4dF"/>
-                <constraint firstItem="vUN-kp-3ea" firstAttribute="bottom" secondItem="syu-vm-g9h" secondAttribute="bottom" constant="40" id="HLF-Nm-s17"/>
+                <constraint firstItem="vUN-kp-3ea" firstAttribute="bottom" secondItem="syu-vm-g9h" secondAttribute="bottom" constant="8" id="HLF-Nm-s17"/>
                 <constraint firstItem="Glv-cy-oAy" firstAttribute="bottom" secondItem="vUN-kp-3ea" secondAttribute="bottom" id="TI3-Q7-UEP"/>
                 <constraint firstItem="y2u-kF-jgk" firstAttribute="centerX" secondItem="vUN-kp-3ea" secondAttribute="centerX" id="dSi-M3-1qd"/>
                 <constraint firstItem="9Bj-JA-tly" firstAttribute="top" secondItem="2G1-LF-7OY" secondAttribute="bottom" constant="25" id="fin-j5-PAc"/>
@@ -140,3 +140,4 @@
         </view>
     </objects>
 </document>
+

@@ -30,7 +30,7 @@ invalid = preset; invalid.layouts[0].controls[0].inputs = [TCInput(code:99999)]
 check((try? invalid.encoded()) == nil,"Reject unmapped codes")
 invalid = preset; invalid.layouts[0].gestures[0].target = "missing"
 check((try? invalid.encoded()) == nil,"Reject dangling references")
-check(TCInputCatalog.sidewaysDirections.map { $0.code } == [109,110,108,107],"Explicit Mario Kart rotation convention")
+check(TCInputCatalog.sidewaysDirections.map { $0.code } == [107,108,109,110],"Explicit Mario Kart rotation convention")
 check(TCInputCatalog.choices.flatMap { $0.inputs }.allSatisfy(TCInputCatalog.supports),"Every editor mapping is bridge compatible")
 let engine = TCGestureEngine(layout:layout)
 engine.width = 1000; engine.height = 200
@@ -86,8 +86,8 @@ let dpadEngine = TCGestureEngine(layout:TCLayout(name:"Pad",controls:[padControl
 dpadEngine.width = 1000; dpadEngine.height = 200
 var directions = Set<Int>()
 dpadEngine.output = { input,value in if value == 0 { directions.remove(input.code) } else { directions.insert(input.code) } }
-dpadEngine.begin(1,x:500,y:50); check(directions == [109],"Kart screen Up maps to raw Left")
-dpadEngine.move(1,x:550,y:100); check(directions == [107],"Kart screen Right maps to raw Up")
+dpadEngine.begin(1,x:500,y:50); check(directions == [107],"Kart screen Up preserves corrected raw Up mapping")
+dpadEngine.move(1,x:550,y:100); check(directions == [110],"Kart screen Right preserves corrected raw Right mapping")
 dpadEngine.end(1,cancelled:true); check(directions.isEmpty,"D-pad cancellation releases directions")
 let analog = TCControl(id:"analog",name:"Analog",kind:.joystick,frame:padControl.frame,inputs:(11...14).map { TCInput(code:$0,axis:true) })
 let analogEngine = TCGestureEngine(layout:TCLayout(name:"Analog",controls:[analog]))
@@ -107,4 +107,22 @@ mixer.set(source:"phone",input:shakeInput,value:0)
 check(mixed == 1,"Phone shake expiry cannot release a held Shake button")
 mixer.set(source:"touch",input:shakeInput,value:0)
 check(mixed == 0,"Last producer release neutralizes Shake")
+let leftTilt = TCInputCatalog.kartTilt(-1)
+check(leftTilt.left == -1 && leftTilt.right == 0,"Full-range left steering retains negative sign")
+let rightTilt = TCInputCatalog.kartTilt(1)
+check(rightTilt.left == 0 && rightTilt.right == 1,"Full-range right steering retains positive sign")
+let neutralTilt = TCInputCatalog.kartTilt(0)
+check(neutralTilt.left == 0 && neutralTilt.right == 0,"Steering recenter releases both axes")
+let pulseControl = TCControl(name:"Shake",kind:.pulse,frame:gas.frame,inputs:shake.inputs)
+let pulseEngine = TCGestureEngine(layout:TCLayout(name:"Pulse",controls:[pulseControl]))
+pulseEngine.width = 1000; pulseEngine.height = 200
+var pulseState:Float = 0
+pulseEngine.output = { _,value in pulseState = value }
+pulseEngine.begin(1,x:150,y:100)
+check(pulseState == 1,"Captured Shake triggers immediately on press")
+pulseEngine.expirePulses()
+check(pulseState == 0,"Captured Shake pulse expires while still held")
+pulseEngine.end(1)
+check(pulseState == 0,"Releasing Shake cannot retrigger the pulse")
 print("Passed \(checks) controller model and input-state checks")
+
