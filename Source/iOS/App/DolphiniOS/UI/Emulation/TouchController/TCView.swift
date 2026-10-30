@@ -7,6 +7,22 @@ import UIKit
 @objc class TCView: UIView
 {
   var real_view: UIView?
+  var legacyMotionSettings: TCMotionSettings?
+  var customPreset: TCPreset?
+  var customLayoutIndex = 0
+  var customLayoutView: TCLayoutView?
+  var editorContext: String { String(describing:type(of:self)) }
+  func editorDefaultLayouts() -> [TCLayout] { [captureLayout("Controls")] }
+  @objc func releaseControllerInputs() {
+    customLayoutView?.resetInputs()
+    for code in TCInputCatalog.buttonCodes {
+      TCManagerInterface.setButtonStateFor(code,controller:port,state:false)
+    }
+    for code in TCInputCatalog.axisCodes {
+      TCManagerInterface.setAxisValueFor(code,controller:port,value:0)
+    }
+  }
+
   
   private var _port: Int = 0
   @objc var port: Int
@@ -34,8 +50,11 @@ import UIKit
     self.addSubview(view)
     
     real_view = view;
+    NotificationCenter.default.addObserver(self,selector:#selector(releaseControllerInputs),name:UIApplication.willResignActiveNotification,object:nil)
   }
   
+  deinit { NotificationCenter.default.removeObserver(self) }
+
   func SetPort(_ port: Int, view: UIView)
   {
     for subview in view.subviews
@@ -55,3 +74,4 @@ import UIKit
   }
   
 }
+

@@ -33,6 +33,7 @@ private extension Float {
   private var wheelInvert = true
   private var wheelSensitivity = 1.0
   private var joystickActive = false
+  @objc var controllerPhoneShakeEnabled = true
   // Detect a short physical shake from the phone's acceleration magnitude.
   // A per-shake pulse is sent to Dolphin, not a continuously held button.
   private var lastPhoneShakeAt: TimeInterval = 0
@@ -50,7 +51,7 @@ private extension Float {
 
   private func sendPhoneShakeIfNeeded(_ acceleration: CMAcceleration) {
     wheelLock.lock()
-    let active = wheelMode || joystickActive
+    let active = (wheelMode || joystickActive) && controllerPhoneShakeEnabled
     if !active { wheelLock.unlock(); return }
     // Gravity gives ~1G at rest. A genuine shake has short higher-G peaks.
     let g = sqrt(acceleration.x * acceleration.x +
@@ -368,3 +369,4 @@ private extension Float {
     self.orientation = UIApplication.shared.statusBarOrientation
   }
 }
+

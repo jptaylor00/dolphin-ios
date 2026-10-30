@@ -1,6 +1,13 @@
 name: Build customized DolphiniOS
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'Source/iOS/App/DolphiniOS/UI/Emulation/**'
+      - 'Source/iOS/App/DolphiniOS.xcodeproj/**'
+      - 'Tests/ControllerEditor/**'
+      - '.github/workflows/custom-ipa.yml'
   push:
     branches: [master]
     paths:
@@ -15,6 +22,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Test controller preset and gesture core
+        run: |
+          CORE=Source/iOS/App/DolphiniOS/UI/Emulation/TouchController/Editor
+          swiftc "$CORE/TCPreset.swift" "$CORE/TCPresetStore.swift" "$CORE/TCGestureEngine.swift" Tests/ControllerEditor/main.swift -o "$RUNNER_TEMP/controller-tests"
+          "$RUNNER_TEMP/controller-tests"
       - name: Install build utilities
         run: |
           brew install cmake ninja bartycrouch

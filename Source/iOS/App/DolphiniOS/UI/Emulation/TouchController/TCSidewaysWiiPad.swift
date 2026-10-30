@@ -6,7 +6,13 @@ import UIKit
 
 // A single continuous touch surface for Mario Kart's accelerate -> lock slide.
 // Neither a separate button nor a pan recognizer can steal the moving finger.
-private final class TCGasLockControl: UIView {
+private final class TCGasLockControl: UIView, TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl] {
+    let gasFrame = twoImage.convert(twoImage.bounds,to:canvas)
+    let lockFrame = lockLabel.convert(lockLabel.bounds,to:canvas)
+    return [TCControl(name:"Wii 2",frame:TCView.captureFrame(gasFrame,in:canvas),inputs:[TCInput(code:106)],artwork:"wiimote_two"),
+      TCControl(name:"Lock",kind:.target,frame:TCView.captureFrame(lockFrame,in:canvas))]
+  }
   var port: Int = 0
   private var locked = false
   private var trackingTwo = false
@@ -113,7 +119,10 @@ private final class TCGasLockControl: UIView {
 }
 
 
-private final class TCKartSteeringJoystick: UIView {
+private final class TCKartSteeringJoystick: UIView, TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl] {
+    [TCControl(name:"Steer",kind:.wheelJoystick,frame:TCView.captureFrame(convert(bounds,to:canvas),in:canvas),artwork:"gcwii_joystick_range")]
+  }
   var port: Int = 4
   private let base = UIView()
   private let thumb = UIView()
@@ -167,7 +176,10 @@ private final class TCKartSteeringJoystick: UIView {
 }
 
 // Allows one sustained finger from B to the D-pad's up arrow while drifting.
-private final class TCKartDriftThrow: UIView {
+private final class TCKartDriftThrow: UIView, TCCompositeCapture {
+  func captureControls(in canvas:UIView) -> [TCControl] {
+    [TCControl(name:"Wii B",frame:TCView.captureFrame(convert(bounds,to:canvas),in:canvas),inputs:[TCInput(code:101)],artwork:"wiimote_b",artworkWidth:image.image.map { Double($0.size.width) },artworkHeight:image.image.map { Double($0.size.height) })]
+  }
   var port: Int = 4
   var upwardTarget = CGRect.zero
   private var throwing = false
@@ -215,13 +227,30 @@ private final class TCKartDriftThrow: UIView {
 class TCSidewaysWiiPad: TCWiiPad {
   private var preset = 0
   private var joystickMode = false
-  @objc var marioKartJoystickMode: Bool { joystickMode }
+  @objc var marioKartJoystickMode: Bool { customPreset == nil ? joystickMode : customLayoutIndex == 1 }
+  override var editorContext: String { "Sideways-\(preset)" }
+  override func editorDefaultLayouts() -> [TCLayout] {
+    guard preset == 2 else { return super.editorDefaultLayouts() }
+    let previous = joystickMode
+    releaseInputs()
+    joystickMode = false; rebuildOverlay()
+    let wheel = captureLayout("Wheel")
+    joystickMode = true; rebuildOverlay()
+    let stick = captureLayout("Joystick")
+    joystickMode = previous; rebuildOverlay()
+    return [wheel,stick]
+  }
+  override func releaseControllerInputs() {
+    releaseInputs()
+    super.releaseControllerInputs()
+  }
   private var overlay: UIView?
   private var gasControl: TCGasLockControl?
   private var lastLayoutSize: CGSize = .zero
 
   @objc func setPreset(_ value: Int) {
     guard preset != value else { return }
+    applyCustomPreset(nil)
     releaseInputs()
     if value != 2 { joystickMode = false }
     preset = value
@@ -374,3 +403,4 @@ class TCSidewaysWiiPad: TCWiiPad {
     layer.addSubview(mode)
   }
 }
+

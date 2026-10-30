@@ -110,6 +110,8 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
+  for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+  [[TCDeviceMotion shared] setMarioKartJoystickMode:NO];
   [self setMarioKartWheelInputConnected:NO];
   [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
   [TCManagerInterface setButtonStateFor:118 controller:4 state:NO];
@@ -258,6 +260,18 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 
   UIMenu* visibleControllerMenu = [UIMenu menuWithTitle:@"Touch Controller" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:visibleControllerActions];
   [controllerActions addObject:visibleControllerMenu];
+
+  if (_visibleTouchPad != DOLEmulationVisibleTouchPadNone) {
+    [controllerActions addObject:[UIAction actionWithTitle:@"Controller Editor / Presets"
+      image:[UIImage systemImageNamed:@"slider.horizontal.3"] identifier:nil handler:^(UIAction*) {
+      NSInteger index = self->_visibleTouchPad - 1;
+      if (index >= 0 && index < self.touchPads.count) {
+        TCView* pad = self.touchPads[index];
+        NSString* gameID = [NSString stringWithUTF8String:SConfig::GetInstance().GetGameID().c_str()];
+        [pad presentControllerEditorFrom:self gameID:gameID];
+      }
+    }]];
+  }
 
   if (wiimoteTouchPadAttached) {
     TCWiiTouchIRMode irMode = (TCWiiTouchIRMode)Config::Get(Config::MAIN_TOUCH_PAD_IR_MODE);
@@ -589,6 +603,8 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     [motion setMotionEnabled:false];
   }
 
+  for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+
   NSInteger targetIdx = touchPad - 1;
 
   for (int i = 0; i < [self.touchPads count]; i++) {
@@ -653,6 +669,9 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     });
   }
 
+  for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+  [[TCDeviceMotion shared] setMarioKartJoystickMode:NO];
+  [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
   [[TCDeviceMotion shared] setMotionEnabled:false];
 }
 
@@ -692,3 +711,4 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 }
 
 @end
+
