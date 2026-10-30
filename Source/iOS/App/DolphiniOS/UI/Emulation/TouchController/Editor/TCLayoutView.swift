@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 import UIKit
 
+enum TCInputRouter {
+  private static var mixers: [Int:TCInputMixer] = [:]
+  static func set(port:Int,source:String,input:TCInput,value:Float) {
+    if mixers[port] == nil {
+      let mixer = TCInputMixer()
+      mixer.output = { input,value in
+        if input.axis { TCManagerInterface.setAxisValueFor(input.code,controller:port,value:value) }
+        else { TCManagerInterface.setButtonStateFor(input.code,controller:port,state:value != 0) }
+      }
+      mixers[port] = mixer
+    }
+    mixers[port]?.set(source:source,input:input,value:value)
+  }
+}
+
 final class TCLayoutView: UIView {
   let engine: TCGestureEngine
   var command: ((TCControlKind) -> Void)?
   private var touchIDs: [ObjectIdentifier: Int] = [:]
   private var serial = 0
   private var pulseTimer: Timer?
+  private var pulseGeneration = 0
   private let port: Int
   private var controls: [String:UIView] = [:]
   init(layout: TCLayout, port: Int) {
@@ -15,9 +31,9 @@ final class TCLayoutView: UIView {
     super.init(frame:.zero)
     isMultipleTouchEnabled = true
     backgroundColor = .clear
+    let source = UUID().uuidString
     engine.output = { input,value in
-      if input.axis { TCManagerInterface.setAxisValueFor(input.code,controller:port,value:value) }
-      else { TCManagerInterface.setButtonStateFor(input.code,controller:port,state:value != 0) }
+      TCInputRouter.set(port:port,source:source,input:input,value:value)
     }
     engine.haptic = { UIImpactFeedbackGenerator(style:.medium).impactOccurred() }
     engine.command = { [weak self] kind in self?.command?(kind) }
@@ -75,7 +91,9 @@ final class TCLayoutView: UIView {
   private func update() {
     TCDeviceMotion.shared.setMarioKartJoystickValue(engine.wheelValue)
     // Pulse lifetime is bounded even if a touch never ends. Do not extend an earlier pulse.
-    if pulseTimer == nil {
+    if engine.pulseGeneration != pulseGeneration {
+      pulseGeneration = engine.pulseGeneration
+      pulseTimer?.invalidate()
       pulseTimer = Timer.scheduledTimer(withTimeInterval:0.12,repeats:false) { [weak self] _ in
         self?.engine.expirePulses(); self?.pulseTimer = nil
       }

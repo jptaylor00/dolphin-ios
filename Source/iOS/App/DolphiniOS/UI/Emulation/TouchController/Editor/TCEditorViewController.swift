@@ -98,8 +98,9 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   init(pad:TCView,gameID:String) {
     self.pad = pad; self.gameID = gameID
     initial = pad.customPreset
-    defaults = pad.editorDefaultLayouts()
-    preset = pad.customPreset ?? TCPreset(name:"My Controller",context:pad.editorContext,gameID:gameID,layouts:defaults)
+    let captured = pad.editorDefaultLayouts()
+    defaults = captured
+    preset = pad.customPreset ?? TCPreset(name:"My Controller",context:pad.editorContext,gameID:gameID,layouts:captured)
     super.init(nibName:nil,bundle:nil)
   }
   required init?(coder:NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -245,7 +246,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   @objc private func properties() {
     guard let index = selectedIndex() else { return }
     let control = preset.layouts[layoutIndex].controls[index]
-    pick(control.name,["Rename","Input mapping","Opacity","Haptics: \(control.haptic ? "On" : "Off")","Remove control"]) { choice in
+    pick(control.name,["Rename","Input mapping","Opacity","Haptics: \(control.haptic ? "On" : "Off")","Activation: \(control.tapOnly ? "Tap" : "Hold")","Remove control"]) { choice in
       switch choice {
       case 0: self.text("Control Name",value:control.name) { self.preset.layouts[self.layoutIndex].controls[index].name = $0; self.refresh() }
       case 1:
@@ -260,6 +261,7 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
           self.preset.layouts[self.layoutIndex].controls[index].opacity = Double(selected+1)*0.2; self.refresh()
         }
       case 3: self.preset.layouts[self.layoutIndex].controls[index].haptic.toggle(); self.refresh()
+      case 4: self.preset.layouts[self.layoutIndex].controls[index].tapOnly.toggle(); self.refresh()
       default:
         self.preset.layouts[self.layoutIndex].controls.remove(at:index)
         self.preset.layouts[self.layoutIndex].gestures.removeAll { $0.source == control.id || $0.target == control.id }

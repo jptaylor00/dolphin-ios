@@ -14,6 +14,7 @@ import UIKit
   var editorContext: String { String(describing:type(of:self)) }
   func editorDefaultLayouts() -> [TCLayout] { [captureLayout("Controls")] }
   @objc func releaseControllerInputs() {
+    TCDeviceMotion.shared.cancelControllerShake()
     customLayoutView?.resetInputs()
     for code in TCInputCatalog.buttonCodes {
       TCManagerInterface.setButtonStateFor(code,controller:port,state:false)

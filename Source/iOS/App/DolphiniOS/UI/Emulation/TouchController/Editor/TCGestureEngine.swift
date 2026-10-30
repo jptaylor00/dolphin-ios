@@ -23,6 +23,7 @@ final class TCGestureEngine {
   private(set) var locked: [String: [TCInput]] = [:]
   private var sent: [TCInput: Float] = [:]
   private var pulses: [String: [TCInput]] = [:]
+  private(set) var pulseGeneration = 0
   init(layout: TCLayout) { self.layout = layout }
   private func hit(_ x: Double, _ y: Double) -> TCControl? {
     layout.controls.reversed().first { $0.frame.contains(x,y,canvasWidth:width,canvasHeight:height) }
@@ -59,7 +60,7 @@ final class TCGestureEngine {
           // Deliberate reverse slide does not immediately re-press the accelerator.
           contact.replaced = true
         }
-      case .pulse: if firstVisit { pulses[rule.id] = rule.inputs }
+      case .pulse: if firstVisit { pulses[rule.id] = rule.inputs; pulseGeneration += 1 }
       case .tap: break
       }
       if firstVisit && rule.haptic { haptic() }
@@ -71,8 +72,11 @@ final class TCGestureEngine {
   func end(_ id: Int, cancelled: Bool = false) {
     guard let contact = contacts.removeValue(forKey:id) else { return }
     if !cancelled && hypot(contact.x-contact.startX,contact.y-contact.startY) < 18 {
+      if let c = layout.controls.first(where: { $0.id == contact.source }), c.tapOnly {
+        pulses[c.id] = c.inputs; pulseGeneration += 1
+      }
       for rule in layout.gestures where rule.source == contact.source && rule.action == .tap {
-        pulses[rule.id] = rule.inputs
+        pulses[rule.id] = rule.inputs; pulseGeneration += 1
         if rule.haptic { haptic() }
       }
     }
@@ -82,7 +86,7 @@ final class TCGestureEngine {
   func expirePulses() { pulses.removeAll(); publish() }
   func reset() { contacts.removeAll(); locked.removeAll(); pulses.removeAll(); publish() }
   private func values(_ c: TCControl, _ t: Contact) -> [(TCInput,Float)] {
-    if t.replaced { return [] }
+    if t.replaced || c.tapOnly { return [] }
     let dx = t.x-c.frame.x*width, dy = t.y-c.frame.y*height
     switch c.kind {
     case .dpad:
@@ -124,5 +128,20 @@ final class TCGestureEngine {
       if value != (sent[input] ?? 0) { output(input,value) }
     }
     sent = next
+  }
+}
+
+// Independent producers (e.g. physical shake and a touch) cannot release each other's input.
+final class TCInputMixer {
+  var output: (TCInput,Float)->Void = { _,_ in }
+  private var owners: [String:[TCInput:Float]] = [:]
+  private var sent: [TCInput:Float] = [:]
+  func set(source:String,input:TCInput,value:Float) {
+    if value == 0 { owners[source]?.removeValue(forKey:input) }
+    else { owners[source,default:[:]][input] = value }
+    if owners[source]?.isEmpty == true { owners.removeValue(forKey:source) }
+    let next = owners.values.compactMap { $0[input] }.max(by: { abs($0) < abs($1) }) ?? 0
+    if next != (sent[input] ?? 0) { output(input,next) }
+    if next == 0 { sent.removeValue(forKey:input) } else { sent[input] = next }
   }
 }

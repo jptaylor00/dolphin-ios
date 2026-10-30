@@ -73,4 +73,22 @@ let imported = try store.importPreset(preset.encoded(),context:preset.context,ga
 check(imported.id != preset.id,"Import creates copy")
 try store.delete(imported)
 check(try store.list(context:preset.context,gameID:preset.gameID).count == 1,"Delete preserves other presets")
+var tap = gas; tap.tapOnly = true
+let tapEngine = TCGestureEngine(layout:TCLayout(name:"Tap",controls:[tap]))
+tapEngine.width = 1000; tapEngine.height = 200
+var tapped:Float = 0
+tapEngine.output = { _,value in tapped = value }
+tapEngine.begin(1,x:150,y:100); check(tapped == 0,"Tap does not act on touch down")
+tapEngine.end(1); check(tapped == 1,"Tap pulses on release")
+tapEngine.expirePulses(); check(tapped == 0,"Tap pulse releases")
+let mixer = TCInputMixer()
+var mixed:Float = 0
+mixer.output = { _,value in mixed = value }
+let shakeInput = TCInput(code:132)
+mixer.set(source:"touch",input:shakeInput,value:1)
+mixer.set(source:"phone",input:shakeInput,value:1)
+mixer.set(source:"phone",input:shakeInput,value:0)
+check(mixed == 1,"Phone shake expiry cannot release a held Shake button")
+mixer.set(source:"touch",input:shakeInput,value:0)
+check(mixed == 0,"Last producer release neutralizes Shake")
 print("Passed \(checks) controller model and input-state checks")

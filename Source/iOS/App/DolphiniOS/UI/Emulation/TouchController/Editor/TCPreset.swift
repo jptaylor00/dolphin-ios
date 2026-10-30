@@ -24,6 +24,7 @@ struct TCControl: Codable, Equatable {
   var inputs: [TCInput] = []
   var opacity: Double = 1
   var haptic: Bool = true
+  var tapOnly: Bool = false
   var artwork: String? = nil
   var artworkWidth: Double? = nil
   var artworkHeight: Double? = nil
@@ -113,8 +114,22 @@ struct TCInputChoice {
   var kind: TCControlKind = .button
 }
 enum TCInputCatalog {
-  static let buttonCodes = Array(0...9) + [20,21] + Array(100...110) + [132,133,134,200,201] + Array(300...312) + [323,324]
-  static let axisCodes = Array(11...14) + Array(16...19) + [20,21] + Array(112...117) + Array(120...125) + Array(127...130) + Array(203...206) + Array(314...317) + Array(319...322) + [323,324]
+  static let buttonCodes: [Int] = {
+    var codes = Array(0...9)
+    codes += [20,21]
+    codes += Array(100...110)
+    codes += [132,133,134,200,201]
+    codes += Array(300...312)
+    codes += [323,324]
+    return codes
+  }()
+  static let axisCodes: [Int] = {
+    var codes = [20,21,323,324]
+    for range in [11...14,16...19,112...117,120...125,127...130,203...206,314...317,319...322] {
+      codes.append(contentsOf:range)
+    }
+    return codes
+  }()
   static func supports(_ input: TCInput) -> Bool { (input.axis ? axisCodes : buttonCodes).contains(input.code) }
   static let names: [Int: String] = [0:"GC A",1:"GC B",2:"GC Start",3:"GC X",4:"GC Y",5:"GC Z",6:"GC Up",7:"GC Down",8:"GC Left",9:"GC Right",20:"GC L",21:"GC R",100:"Wii A",101:"Wii B",102:"Wii −",103:"Wii +",104:"Wii Home",105:"Wii 1",106:"Wii 2",107:"Wii raw Up",108:"Wii raw Down",109:"Wii raw Left",110:"Wii raw Right",132:"Shake X",133:"Shake Y",134:"Shake Z",200:"Nunchuk C",201:"Nunchuk Z",300:"Classic A",301:"Classic B",302:"Classic X",303:"Classic Y",304:"Classic −",305:"Classic +",306:"Classic Home",307:"Classic ZL",308:"Classic ZR",309:"Classic Up",310:"Classic Down",311:"Classic Left",312:"Classic Right",323:"Classic L",324:"Classic R"]
   static var choices: [TCInputChoice] {

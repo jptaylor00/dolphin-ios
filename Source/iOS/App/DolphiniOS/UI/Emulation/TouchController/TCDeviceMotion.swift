@@ -33,7 +33,11 @@ private extension Float {
   private var wheelInvert = true
   private var wheelSensitivity = 1.0
   private var joystickActive = false
-  @objc var controllerPhoneShakeEnabled = true
+  private var phoneShakeEnabled = true
+  @objc var controllerPhoneShakeEnabled: Bool {
+    get { wheelLock.lock(); defer { wheelLock.unlock() }; return phoneShakeEnabled }
+    set { wheelLock.lock(); phoneShakeEnabled = newValue; wheelLock.unlock() }
+  }
   // Detect a short physical shake from the phone's acceleration magnitude.
   // A per-shake pulse is sent to Dolphin, not a continuously held button.
   private var lastPhoneShakeAt: TimeInterval = 0
@@ -41,17 +45,19 @@ private extension Float {
   private let phoneShakeThreshold = 2.25 // G, removes constant gravity and steering
   private let phoneShakeCooldown = 0.6
 
+  @objc func cancelControllerShake() { clearPhoneShake() }
+
   private func clearPhoneShake() {
     phoneShakeReleaseWork?.cancel()
     phoneShakeReleaseWork = nil
     for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
-      TCManagerInterface.setButtonStateFor(key.rawValue, controller: port, state: false)
+      TCInputRouter.set(port:port,source:"phone-shake",input:TCInput(code:key.rawValue),value:0)
     }
   }
 
   private func sendPhoneShakeIfNeeded(_ acceleration: CMAcceleration) {
     wheelLock.lock()
-    let active = (wheelMode || joystickActive) && controllerPhoneShakeEnabled
+    let active = (wheelMode || joystickActive) && phoneShakeEnabled
     if !active { wheelLock.unlock(); return }
     // Gravity gives ~1G at rest. A genuine shake has short higher-G peaks.
     let g = sqrt(acceleration.x * acceleration.x +
@@ -62,9 +68,13 @@ private extension Float {
     wheelLock.unlock()
     guard trigger else { return }
     DispatchQueue.main.async {
+      self.wheelLock.lock()
+      let stillActive = (self.wheelMode || self.joystickActive) && self.phoneShakeEnabled
+      self.wheelLock.unlock()
+      guard stillActive, self.motionEnabled, UIApplication.shared.applicationState == .active else { return }
       self.clearPhoneShake()
       for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
-        TCManagerInterface.setButtonStateFor(key.rawValue, controller: self.port, state: true)
+        TCInputRouter.set(port:self.port,source:"phone-shake",input:TCInput(code:key.rawValue),value:1)
       }
       let release = DispatchWorkItem { [weak self] in self?.clearPhoneShake() }
       self.phoneShakeReleaseWork = release
