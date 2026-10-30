@@ -669,10 +669,12 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
     });
   }
 
-  for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
-  [[TCDeviceMotion shared] setMarioKartJoystickMode:NO];
-  [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
-  [[TCDeviceMotion shared] setMotionEnabled:false];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (TCView* pad in self.touchPads) [pad releaseControllerInputs];
+    [[TCDeviceMotion shared] setMarioKartJoystickMode:NO];
+    [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
+    [[TCDeviceMotion shared] setMotionEnabled:false];
+  });
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {

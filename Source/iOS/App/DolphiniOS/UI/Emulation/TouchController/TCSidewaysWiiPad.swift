@@ -252,7 +252,7 @@ class TCSidewaysWiiPad: TCWiiPad {
   private var lastLayoutSize: CGSize = .zero
 
   @objc func setPreset(_ value: Int) {
-    guard preset != value else { return }
+    guard preset != value || customPreset != nil else { return }
     applyCustomPreset(nil)
     releaseInputs()
     if value != 2 { joystickMode = false }

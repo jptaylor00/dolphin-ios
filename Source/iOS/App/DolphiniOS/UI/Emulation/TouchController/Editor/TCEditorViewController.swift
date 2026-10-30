@@ -112,12 +112,9 @@ final class TCEditorViewController:UIViewController,UIDocumentPickerDelegate {
   override func viewDidLoad() {
     super.viewDidLoad()
     view.backgroundColor = UIColor(white:0.06,alpha:1)
-    // Match the actual controller canvas dimensions; the toolbar floats over the game.
-    if let snapshot = pad.superview?.snapshotView(afterScreenUpdates:false) {
-      snapshot.frame = view.bounds; snapshot.autoresizingMask = [.flexibleWidth,.flexibleHeight]
-      snapshot.alpha = 0.25; view.addSubview(snapshot)
-    }
+    // A neutral canvas avoids ghost copies of controls in a game screenshot.
     canvas.frame = view.bounds; canvas.autoresizingMask = [.flexibleWidth,.flexibleHeight]
+    canvas.alpha = max(0.05,pad.alpha)
     canvas.layout = preset.layouts[layoutIndex]
     canvas.changed = { [weak self] layout in guard let self = self else { return }; self.preset.layouts[self.layoutIndex] = layout }
     view.addSubview(canvas)

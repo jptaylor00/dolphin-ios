@@ -48,7 +48,7 @@ final class TCLayoutView: UIView {
   required init?(coder:NSCoder) { fatalError("init(coder:) has not been implemented") }
   deinit { NotificationCenter.default.removeObserver(self); pulseTimer?.invalidate() }
   static func artwork(_ c: TCControl) -> UIView {
-    let box = UIView()
+    let box = UIView(frame:CGRect(x:0,y:0,width:CGFloat(c.frame.width),height:CGFloat(c.frame.height)))
     box.alpha = CGFloat(c.opacity)
     if c.kind == .wheelJoystick {
       box.backgroundColor = UIColor(white:0.3,alpha:0.7)
