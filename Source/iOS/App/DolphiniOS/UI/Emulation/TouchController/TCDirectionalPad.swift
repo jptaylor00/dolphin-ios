@@ -205,7 +205,7 @@ class TCDirectionalPad: UIView
     // Same direction convention as the SMB sideways joystick above.
     // Other D-pads (including the upright/Nunchuk pad) are left untouched.
     let mappedPresses = sidewaysWiiDPad && directionalPadType == 107
-      ? [buttonPresses[2], buttonPresses[3], buttonPresses[1], buttonPresses[0]]
+      ? [buttonPresses[3], buttonPresses[2], buttonPresses[0], buttonPresses[1]]
       : buttonPresses
     for (i, press) in mappedPresses.enumerated()
     {
