@@ -256,7 +256,33 @@ class TCSidewaysWiiPad: TCWiiPad {
     for view in canvas.subviews {
       view.isHidden = preset == 2
     }
-    guard preset == 2 else { return }
+    if preset != 2 {
+      // Keep the original Super Mario Bros 1/2 buttons and their 43pt size.
+      // Add an independent shake control without replacing the nib controls.
+      let shake = UIButton(type: .system)
+      shake.frame = CGRect(x: canvas.bounds.width - 95,
+                           y: max(0, canvas.bounds.height - 143),
+                           width: 76, height: 32)
+      shake.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
+      shake.setTitle("SHAKE", for: .normal)
+      shake.titleLabel?.font = .systemFont(ofSize: 13, weight: .bold)
+      shake.setTitleColor(.white, for: .normal)
+      shake.backgroundColor = UIColor(white: 0.24, alpha: 0.85)
+      shake.layer.cornerRadius = 9
+      shake.addAction(UIAction { _ in
+        TCDeviceMotion.shared.triggerMarioKartShake()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+      }, for: .touchDown)
+      let layer = UIView(frame: canvas.bounds)
+      layer.backgroundColor = .clear
+      layer.isUserInteractionEnabled = false
+      layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      shake.isUserInteractionEnabled = true
+      canvas.addSubview(layer)
+      canvas.addSubview(shake)
+      overlay = shake
+      return
+    }
 
     let layer = UIView(frame: canvas.bounds)
     layer.backgroundColor = .clear
