@@ -33,6 +33,43 @@ private extension Float {
   private var wheelInvert = true
   private var wheelSensitivity = 1.0
   private var joystickActive = false
+  // Detect a short physical shake from the phone's acceleration magnitude.
+  // A per-shake pulse is sent to Dolphin, not a continuously held button.
+  private var lastPhoneShakeAt: TimeInterval = 0
+  private var phoneShakeReleaseWork: DispatchWorkItem?
+  private let phoneShakeThreshold = 2.25 // G, removes constant gravity and steering
+  private let phoneShakeCooldown = 0.6
+
+  private func clearPhoneShake() {
+    phoneShakeReleaseWork?.cancel()
+    phoneShakeReleaseWork = nil
+    for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+      TCManagerInterface.setButtonStateFor(key.rawValue, controller: port, state: false)
+    }
+  }
+
+  private func sendPhoneShakeIfNeeded(_ acceleration: CMAcceleration) {
+    wheelLock.lock()
+    let active = wheelMode || joystickActive
+    if !active { wheelLock.unlock(); return }
+    // Gravity gives ~1G at rest. A genuine shake has short higher-G peaks.
+    let g = sqrt(acceleration.x * acceleration.x +
+                 acceleration.y * acceleration.y + acceleration.z * acceleration.z)
+    let now = Date().timeIntervalSince1970
+    let trigger = g > phoneShakeThreshold && now - lastPhoneShakeAt >= phoneShakeCooldown
+    if trigger { lastPhoneShakeAt = now }
+    wheelLock.unlock()
+    guard trigger else { return }
+    DispatchQueue.main.async {
+      self.clearPhoneShake()
+      for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+        TCManagerInterface.setButtonStateFor(key.rawValue, controller: self.port, state: true)
+      }
+      let release = DispatchWorkItem { [weak self] in self?.clearPhoneShake() }
+      self.phoneShakeReleaseWork = release
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: release)
+    }
+  }
   @objc var marioKartSteeringSensitivity: Double {
     get { wheelLock.lock(); defer { wheelLock.unlock() }; return wheelSensitivity }
     set { wheelLock.lock(); wheelSensitivity = max(0.4, min(2.5, newValue)); wheelLock.unlock() }
@@ -211,6 +248,7 @@ private extension Float {
       
       // Get the data
       let acceleration = data!.acceleration
+      self.sendPhoneShakeIfNeeded(acceleration)
       
       var x, y: Double
       var z = acceleration.z
@@ -314,6 +352,7 @@ private extension Float {
       self.motionManager.stopAccelerometerUpdates()
       self.motionManager.stopGyroUpdates()
       self.motionManager.stopDeviceMotionUpdates()
+      DispatchQueue.main.async { self.clearPhoneShake() }
       wheelLock.lock()
       setWheelTilt(0)
       wheelLock.unlock()
