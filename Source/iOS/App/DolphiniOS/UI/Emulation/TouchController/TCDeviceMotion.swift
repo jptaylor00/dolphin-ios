@@ -3,6 +3,7 @@
 
 import CoreMotion
 import Foundation
+import UIKit
 
 @objc public class TCDeviceMotion: NSObject {
   @objc public static let shared = TCDeviceMotion()
@@ -20,29 +21,135 @@ import Foundation
   private let wheelLock = NSLock()
   private var wheelMode = false
   private var wheelNeedsCenter = true
-  private var wheelCenterAngle = 0.0
+  private var wheelReferenceQuaternion: CMQuaternion?
+  private var wheelLastSampleAt: TimeInterval = 0
+  private var wheelSteeringDegrees = 0.0
+  private var wheelRecoveryTimer: Timer?
   private var wheelInvert = false
+
+  // A Wii Wheel is turned around the phone's screen normal, so use
+  // Core Motion's fused quaternion instead of accelerometer X/Y gravity.
+  // This also works when the phone is nearly flat.
+  private func setWheelTilt(_ value: Float) {
+    TCManagerInterface.setAxisValueFor(
+      TCButtonType.wiiTiltLeft.rawValue, controller: port, value: value)
+    TCManagerInterface.setAxisValueFor(
+      TCButtonType.wiiTiltRight.rawValue, controller: port, value: value)
+  }
+
+  private func startWheelAttitudeUpdatesIfNeeded() {
+    guard motionEnabled, motionManager.isDeviceMotionAvailable,
+          !motionManager.isDeviceMotionActive else { return }
+    wheelLock.lock()
+    let active = wheelMode
+    wheelLock.unlock()
+    guard active else { return }
+    motionManager.deviceMotionUpdateInterval = 1.0 / 100.0
+    motionManager.startDeviceMotionUpdates(using: .xArbitraryZVertical,
+      to: operationQueue) { [weak self] sample, error in
+      guard let self = self, let sample = sample, error == nil else { return }
+      let q = sample.attitude.quaternion
+      self.wheelLock.lock()
+      guard self.wheelMode else {
+        self.wheelLock.unlock()
+        return
+      }
+      if self.wheelNeedsCenter || self.wheelReferenceQuaternion == nil {
+        self.wheelReferenceQuaternion = q
+        self.wheelNeedsCenter = false
+      }
+      let r = self.wheelReferenceQuaternion!
+      // Inverse(reference) * current, in local device coordinates.
+      // Keep the local Z twist; global yaw depends on phone position.
+      let qw = r.w*q.w + r.x*q.x + r.y*q.y + r.z*q.z
+      let qz = r.w*q.z - r.x*q.y + r.y*q.x - r.z*q.w
+      var angle = 2.0 * atan2(qz, qw)
+      if angle > .pi { angle -= 2.0 * .pi }
+      if angle < -.pi { angle += 2.0 * .pi }
+      angle = max(-0.85, min(0.85, angle))
+      if self.wheelInvert { angle = -angle }
+      self.wheelSteeringDegrees = angle * 180.0 / .pi
+      self.wheelLastSampleAt = Date().timeIntervalSince1970
+      // Axis pairs are complementary: ±0.5 maps to Dolphin Tilt x ±1.
+      self.setWheelTilt(Float(angle / 0.85) * 0.5)
+      self.wheelLock.unlock()
+    }
+  }
+
+  @objc private func checkWheelAttitudeStream() {
+    wheelLock.lock()
+    let active = wheelMode
+    let lastTime = wheelLastSampleAt
+    wheelLock.unlock()
+    guard active, motionEnabled, UIApplication.shared.applicationState == .active
+      else { return }
+    if !motionManager.isDeviceMotionActive ||
+       (lastTime > 0 && Date().timeIntervalSince1970 - lastTime > 2.0) {
+      motionManager.stopDeviceMotionUpdates()
+      wheelLock.lock()
+      wheelNeedsCenter = true
+      wheelReferenceQuaternion = nil
+      wheelLastSampleAt = 0
+      setWheelTilt(0)
+      wheelLock.unlock()
+      startWheelAttitudeUpdatesIfNeeded()
+    }
+  }
 
   @objc func setMarioKartWheelSteering(_ enabled: Bool) {
     wheelLock.lock()
     if enabled && !wheelMode {
       wheelNeedsCenter = true
+      wheelReferenceQuaternion = nil
+      wheelLastSampleAt = 0
     }
     wheelMode = enabled
-    wheelLock.unlock()
-    // Release Mario Kart-only simulated tilt immediately when switching away.
     if !enabled {
-      TCManagerInterface.setAxisValueFor(
-        TCButtonType.wiiTiltLeft.rawValue, controller: port, value: 0)
-      TCManagerInterface.setAxisValueFor(
-        TCButtonType.wiiTiltRight.rawValue, controller: port, value: 0)
+      wheelReferenceQuaternion = nil
+      wheelSteeringDegrees = 0
+      setWheelTilt(0)
+    }
+    wheelLock.unlock()
+    if enabled {
+      startWheelAttitudeUpdatesIfNeeded()
+      if wheelRecoveryTimer == nil {
+        wheelRecoveryTimer = Timer.scheduledTimer(timeInterval: 1.0,
+          target: self, selector: #selector(checkWheelAttitudeStream),
+          userInfo: nil, repeats: true)
+        RunLoop.main.add(wheelRecoveryTimer!, forMode: .common)
+      }
+    } else {
+      wheelRecoveryTimer?.invalidate()
+      wheelRecoveryTimer = nil
+      motionManager.stopDeviceMotionUpdates()
     }
   }
 
   @objc func recenterMarioKartWheelSteering() {
     wheelLock.lock()
     wheelNeedsCenter = true
+    wheelReferenceQuaternion = nil
     wheelLock.unlock()
+  }
+
+  @objc var marioKartSteeringDebugInfo: String {
+    wheelLock.lock()
+    let enabled = wheelMode
+    let centered = !wheelNeedsCenter
+    let degrees = wheelSteeringDegrees
+    let last = wheelLastSampleAt
+    wheelLock.unlock()
+    let age = last == 0 ? "No updates yet" :
+      String(format: "Last update %.1f sec ago",
+             Date().timeIntervalSince1970 - last)
+    return """
+    Mode: \(enabled ? "Mario Kart active" : "inactive")
+    Motion available: \(motionManager.isDeviceMotionAvailable)
+    Motion running: \(motionManager.isDeviceMotionActive)
+    Calibrated: \(centered)
+    Wheel angle: \(String(format: "%.1f", degrees)) degrees
+    \(age)
+    """
   }
 
   @objc var marioKartSteeringInverted: Bool {
@@ -83,32 +190,6 @@ import Foundation
       
       var x, y: Double
       var z = acceleration.z
-      var customWheelAngle: Double? = nil
-
-      self.wheelLock.lock()
-      if self.wheelMode {
-        // Detect physical rotation of the phone in the screen plane. When the
-        // phone is nearly flat this projection is too small to be reliable;
-        // use neutral steering until it is held like an upright Wii Wheel.
-        let planarGravity = sqrt(acceleration.x * acceleration.x +
-                                 acceleration.y * acceleration.y)
-        if planarGravity >= 0.22 {
-          let phoneAngle = atan2(acceleration.y, acceleration.x)
-          if self.wheelNeedsCenter {
-            self.wheelCenterAngle = phoneAngle
-            self.wheelNeedsCenter = false
-          }
-          var relativeAngle = phoneAngle - self.wheelCenterAngle
-          while relativeAngle > .pi { relativeAngle -= 2 * .pi }
-          while relativeAngle < -.pi { relativeAngle += 2 * .pi }
-          relativeAngle = min(0.85, max(-0.85, relativeAngle))
-          customWheelAngle = relativeAngle * (self.wheelInvert ? -1.0 : 1.0)
-        } else {
-          customWheelAngle = 0 // no direction; do not latch previous steering
-        }
-      }
-      self.wheelLock.unlock()
-
       switch (self.orientation) {
       case .portrait, .unknown:
         x = -acceleration.x
@@ -124,20 +205,6 @@ import Foundation
         y = acceleration.x
       @unknown default:
         return
-      }
-
-      // Mario Kart uses Dolphin's built-in Tilt simulation instead of
-      // replacing the physical acceleration vector. This has a known, exact
-      // neutral gravity reference; the previous synthesized +X gravity
-      // forced a left turn even with steering centered.
-      if let angle = customWheelAngle {
-        // TCButtonType.wiiTiltLeft / Right are a signed complementary pair:
-        // Tilt/Right - Tilt/Left = 2 * supplied axis.
-        let normalized = Float(max(-1.0, min(1.0, angle / 0.85))) * 0.5
-        TCManagerInterface.setAxisValueFor(
-          TCButtonType.wiiTiltLeft.rawValue, controller: self.port, value: normalized)
-        TCManagerInterface.setAxisValueFor(
-          TCButtonType.wiiTiltRight.rawValue, controller: self.port, value: normalized)
       }
 
       // Leave original phone-to-Wii motion processing untouched for all games.
@@ -211,17 +278,21 @@ import Foundation
   }
   
   @objc func setMotionEnabled(_ mode: Bool) {
-    if (self.motionEnabled == mode) {
+    if self.motionEnabled == mode {
+      if mode { startWheelAttitudeUpdatesIfNeeded() }
       return
     }
-    
     self.motionEnabled = mode
-    
-    if (self.motionEnabled) {
+    if mode {
       self.registerMotionHandlers()
+      startWheelAttitudeUpdatesIfNeeded()
     } else {
       self.motionManager.stopAccelerometerUpdates()
       self.motionManager.stopGyroUpdates()
+      self.motionManager.stopDeviceMotionUpdates()
+      wheelLock.lock()
+      setWheelTilt(0)
+      wheelLock.unlock()
     }
   }
   
