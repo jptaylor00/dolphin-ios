@@ -120,17 +120,22 @@ import Foundation
       }
 
       if let angle = customWheelAngle {
-        // At the calibrated center produce Dolphin's neutral gravity vector
-        // (0,0,+g), eliminating the constant side-steer from phone orientation.
-        // Roll around the Wii Wheel axis to steer left/right with phone twist.
-        // The existing negative G conversion below is intentional.
-        x = -sin(angle)
-        y = 0
-        z = -cos(angle)
+        // A Wii Wheel is held sideways with its face toward the player.
+        // At neutral, gravity is in the controller's face plane, not the
+        // face-up +Z direction. Turning the phone rotates gravity in X/Y,
+        // which is how Mario Kart detects steering from an accelerometer.
+        // Dolphin's Sideways Wii Remote option handles the 90-degree rotation.
+        x = -cos(angle)
+        y = sin(angle)
+        z = 0
       }
       
       // CMAccelerationData's units are G's
-      let gravity = -9.81
+      // Each Wii Remote IMU channel is mapped twice (positive/negative
+      // controls), and each pair is subtracted by Dolphin. With the signed
+      // input axes this doubles the measured value; compensate ONLY in the
+      // Mario Kart synthetic wheel path. Other games retain their inputs.
+      let gravity = customWheelAngle == nil ? -9.81 : -9.81 / 2.0
       x *= gravity
       y *= gravity
       z *= gravity

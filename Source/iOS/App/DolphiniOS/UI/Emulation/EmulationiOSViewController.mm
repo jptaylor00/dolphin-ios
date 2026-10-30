@@ -5,6 +5,9 @@
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include <array>
+#include <string>
+
 #import "Common/IOFile.h"
 
 #import "Core/ConfigManager.h"
@@ -21,6 +24,9 @@
 #import "Core/System.h"
 
 #import "InputCommon/InputConfig.h"
+#import "InputCommon/ControllerEmu/ControllerEmu.h"
+#import "InputCommon/ControllerEmu/Control/Control.h"
+#import "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
 
 #import "VideoCommon/Present.h"
 
@@ -46,6 +52,13 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   DOLEmulationVisibleTouchPad _visibleTouchPad;
   int _stateSlot;
   NSInteger _sidewaysPreset;
+
+  // Temporary Mario Kart-only input settings, restored when that preset ends.
+  // The built-in Touchscreen.ini has no Wii Remote IMU accelerometer mapping,
+  // and is imported only on first launch. Bind the CURRENT controller instead.
+  BOOL _marioKartWheelInputConnected;
+  std::array<std::string, 6> _previousMarioKartIMUBindings;
+  unsigned int _previousMarioKartExtension;
 }
 
 - (void)viewDidLoad {
@@ -92,6 +105,9 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
+  [self setMarioKartWheelInputConnected:NO];
+  [[TCDeviceMotion shared] setMarioKartWheelSteering:NO];
+  [TCManagerInterface setButtonStateFor:118 controller:4 state:NO];
   [super viewDidDisappear:animated];
 
   [[NSNotificationCenter defaultCenter] removeObserver:self name:DOLHostTitleChangedNotification object:nil];
@@ -429,12 +445,58 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
   [self updateVisibleTouchPadWithType:DOLEmulationVisibleTouchPadGameCube];
 }
 
+// Bind only the Mario Kart Wii Wheel controls. Do not modify the saved
+// Wiimote configuration or the Super Mario Bros controller inputs.
+// Restore both the player's previous Nunchuk choice and IMU mappings on exit.
+- (void)setMarioKartWheelInputConnected:(BOOL)enabled {
+  if (_marioKartWheelInputConnected == enabled)
+    return;
+
+  if (![self isWiimoteTouchPadAttached])
+    return;
+
+  auto* wiimote = static_cast<WiimoteEmu::Wiimote*>(Wiimote::GetConfig()->GetController(0));
+  auto* imu = wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer);
+  auto* attachments = static_cast<ControllerEmu::Attachments*>(
+      wiimote->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Attachments));
+
+  if (!imu || imu->controls.size() != 6 || !attachments)
+    return;
+
+  // Input order: Up, Down, Left, Right, Forward, Backward. These six
+  // controller axes already receive values from TCDeviceMotion, but had
+  // no Wii Remote IMU expressions in the installed touchscreen profile.
+  static constexpr const char* kWiiAccelExpressions[6] = {
+      "`Axis 629`", "`Axis 630`", "`Axis 625`",
+      "`Axis 626`", "`Axis 627`", "`Axis 628`"};
+
+  const auto lock = ControllerEmu::EmulatedController::GetStateLock();
+  if (enabled) {
+    _previousMarioKartExtension = attachments->GetSelectedAttachment();
+    // Mario Kart's Wii Wheel uses a sideways remote with NO Nunchuk; if
+    // Nunchuk remains attached, Mario Kart instead expects stick steering.
+    attachments->SetSelectedAttachment(WiimoteEmu::ExtensionNumber::NONE);
+  } else {
+    attachments->SetSelectedAttachment(_previousMarioKartExtension);
+  }
+
+  for (size_t i = 0; i != imu->controls.size(); ++i) {
+    auto* reference = imu->controls[i]->control_ref.get();
+    if (enabled)
+      _previousMarioKartIMUBindings[i] = reference->GetExpression();
+    reference->SetExpression(enabled ? kWiiAccelExpressions[i] : _previousMarioKartIMUBindings[i]);
+    wiimote->UpdateSingleControlReference(g_controller_interface, reference);
+  }
+  _marioKartWheelInputConnected = enabled;
+}
+
 - (void)updateVisibleTouchPadWithType:(DOLEmulationVisibleTouchPad)touchPad {
   // Selecting a controller layout is not the same as changing the emulated
   // Wii Remote's extension/orientation. Only enable the wheel behavior when
   // the custom Mario Kart touch layout is actually visible.
   const bool marioKartMode =
       touchPad == DOLEmulationVisibleTouchPadSidewaysWiimote && _sidewaysPreset == 2;
+  [self setMarioKartWheelInputConnected:marioKartMode];
   [[TCDeviceMotion shared] setMarioKartWheelSteering:marioKartMode];
   [TCManagerInterface setButtonStateFor:118 controller:4 state:marioKartMode];
   if (_visibleTouchPad == touchPad) {
