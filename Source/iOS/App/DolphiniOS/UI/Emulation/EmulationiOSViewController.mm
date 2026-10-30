@@ -182,9 +182,18 @@ typedef NS_ENUM(NSInteger, DOLEmulationVisibleTouchPad) {
       }];
       invertWheel.state = [TCDeviceMotion shared].marioKartSteeringInverted
         ? UIMenuElementStateOn : UIMenuElementStateOff;
+      UIAction* wheelDiagnostic = [UIAction actionWithTitle:@"Steering Diagnostics"
+        image:[UIImage systemImageNamed:@"waveform.path"] identifier:nil handler:^(UIAction*) {
+        NSString* info = [TCDeviceMotion shared].marioKartSteeringDebugInfo;
+        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Mario Kart Steering"
+          message:info preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+          style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+      }];
       [controllerActions addObject:[UIMenu menuWithTitle:@"Mario Kart Wheel"
         image:[UIImage systemImageNamed:@"steeringwheel"] identifier:nil options:0
-        children:@[recenterWheel, invertWheel]]];
+        children:@[recenterWheel, invertWheel, wheelDiagnostic]]];
     }
   }
 
