@@ -46,6 +46,59 @@ private extension Float {
   private let phoneShakeThreshold = 2.25 // G, removes constant gravity and steering
   private let phoneShakeCooldown = 0.6
 
+  // Experimental double-back-tap Wii Shake input. iOS does not expose its
+  // system Back Tap gesture to apps; detect two short accelerometer impulses.
+  // Keep a separate router source so physical shake and screen controls coexist.
+  @objc var controllerBackTapShakeEnabled: Bool = true
+  @objc var controllerBackTapSensitivity: Double = 1.0
+  private var lastBackTapPeakAt: TimeInterval = 0
+  private var firstBackTapAt: TimeInterval = 0
+  private var backTapCooldownUntil: TimeInterval = 0
+  private var lastBackTapZ: Double?
+  private var backTapReleaseWork: DispatchWorkItem?
+
+  private func clearBackTapShake() {
+    backTapReleaseWork?.cancel()
+    backTapReleaseWork = nil
+    for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+      TCInputRouter.set(port: port, source: "back-tap", input: TCInput(code: key.rawValue), value: 0)
+    }
+  }
+
+  private func triggerBackTapShake() {
+    guard motionEnabled, controllerBackTapShakeEnabled,
+          UIApplication.shared.applicationState == .active else { return }
+    clearBackTapShake()
+    for key in [TCButtonType.wiiShakeX, .wiiShakeY, .wiiShakeZ] {
+      TCInputRouter.set(port: port, source: "back-tap", input: TCInput(code: key.rawValue), value: 1)
+    }
+    let release = DispatchWorkItem { [weak self] in self?.clearBackTapShake() }
+    backTapReleaseWork = release
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: release)
+  }
+
+  // Runs on Core Motion's serial operation queue. Detect impulses along
+  // the screen normal, rather than tilting the phone to steer.
+  private func detectBackTap(_ acceleration: CMAcceleration, at now: TimeInterval) {
+    defer { lastBackTapZ = acceleration.z }
+    guard controllerBackTapShakeEnabled, let previousZ = lastBackTapZ else { return }
+    let sensitivity = max(0.5, min(2.0, controllerBackTapSensitivity))
+    let impulse = abs(acceleration.z - previousZ)
+    guard impulse >= 0.75 / sensitivity,
+          now - lastBackTapPeakAt >= 0.085 else { return }
+    lastBackTapPeakAt = now
+    guard now >= backTapCooldownUntil else { return }
+
+    if firstBackTapAt > 0, now - firstBackTapAt >= 0.12,
+       now - firstBackTapAt <= 0.46 {
+      firstBackTapAt = 0
+      backTapCooldownUntil = now + 0.7
+      DispatchQueue.main.async { [weak self] in self?.triggerBackTapShake() }
+    } else {
+      firstBackTapAt = now
+    }
+  }
+
   @objc func cancelControllerShake() { clearPhoneShake() }
 
   private func clearPhoneShake() {
@@ -276,6 +329,7 @@ private extension Float {
       // Get the data
       let acceleration = data!.acceleration
       self.sendPhoneShakeIfNeeded(acceleration)
+      self.detectBackTap(acceleration, at: ProcessInfo.processInfo.systemUptime)
       
       var x, y: Double
       var z = acceleration.z
@@ -379,7 +433,7 @@ private extension Float {
       self.motionManager.stopAccelerometerUpdates()
       self.motionManager.stopGyroUpdates()
       self.motionManager.stopDeviceMotionUpdates()
-      DispatchQueue.main.async { self.clearPhoneShake() }
+      DispatchQueue.main.async { self.clearPhoneShake(); self.clearBackTapShake() }
       wheelLock.lock()
       setWheelTilt(0)
       wheelLock.unlock()
