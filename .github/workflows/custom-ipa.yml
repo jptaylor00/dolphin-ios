@@ -9,7 +9,7 @@ on:
       - 'Tests/ControllerEditor/**'
       - '.github/workflows/custom-ipa.yml'
   push:
-    branches: [master, fix/mario-kart-dpad-ccw]
+    branches: [master, fix/mario-kart-dpad-ccw, feature/back-tap-shake]
     paths:
       - 'Source/iOS/App/DolphiniOS/UI/Emulation/TouchController/**'
       - 'Source/iOS/App/DolphiniOS/UI/Emulation/EmulationiOSViewController.mm'
